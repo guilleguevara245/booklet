@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
   check,
@@ -146,3 +146,20 @@ export const closures = pgTable(
     check('closures_range_check', sql`${t.endsAt} > ${t.startsAt}`),
   ],
 );
+
+// --- Relaciones (para las consultas con `with` de Drizzle) ---
+
+export const staffRelations = relations(staff, ({ many }) => ({
+  services: many(staffServices),
+  workingHours: many(workingHours),
+}));
+
+export const staffServicesRelations = relations(staffServices, ({ one }) => ({
+  staff: one(staff, { fields: [staffServices.staffId], references: [staff.id] }),
+  service: one(services, { fields: [staffServices.serviceId], references: [services.id] }),
+}));
+
+export const workingHoursRelations = relations(workingHours, ({ one }) => ({
+  staff: one(staff, { fields: [workingHours.staffId], references: [staff.id] }),
+  location: one(locations, { fields: [workingHours.locationId], references: [locations.id] }),
+}));
