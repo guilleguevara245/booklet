@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [swc.vite({ module: { type: 'es6' } })],
   test: {
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    globalSetup: ['./test/global-setup.ts'],
     // Carga apps/api/.env para las pruebas de integración contra PostgreSQL y Redis.
     env: loadEnv('test', process.cwd(), ''),
   },

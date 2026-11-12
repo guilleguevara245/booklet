@@ -2,9 +2,10 @@ import { healthResponseSchema } from '@booklet/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.factory.js';
+import { integrationReady } from './helpers.js';
 
 // Necesita PostgreSQL y Redis reales (docker compose en local, servicios en CI).
-const ready = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
+const ready = integrationReady;
 
 describe.skipIf(!ready)('GET /health (e2e)', () => {
   let app: NestFastifyApplication;
