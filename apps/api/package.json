@@ -11,7 +11,8 @@
     "lint": "eslint src test",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file-if-exists=.env dist/database/migrate.js"
+    "db:migrate": "node --env-file-if-exists=.env dist/database/migrate.js",
+    "db:seed": "node --env-file-if-exists=.env dist/database/seed.js"
   },
   "dependencies": {
     "@booklet/shared": "workspace:*",
