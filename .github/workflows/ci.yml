@@ -71,10 +71,17 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      # Servidor SMTP de prueba: la API manda los mails ahí y las pruebas los leen por su API.
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports: ['1025:1025', '8025:8025']
 
     env:
       DATABASE_URL: postgres://booklet:booklet@localhost:5432/booklet
       REDIS_URL: redis://localhost:6379
+      MAIL_TRANSPORT: smtp
+      SMTP_URL: smtp://localhost:1025
+      MAILPIT_URL: http://localhost:8025
 
     steps:
       - uses: actions/checkout@v7

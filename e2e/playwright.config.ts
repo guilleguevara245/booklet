@@ -42,7 +42,9 @@ export default defineConfig({
         PORT: '3000',
         CORS_ORIGIN: WEB_URL,
         NODE_ENV: 'test',
+        // Con MAIL_TRANSPORT=smtp y Mailpit corriendo, también se prueban los mails.
         MAIL_TRANSPORT: process.env.MAIL_TRANSPORT ?? 'log',
+        SMTP_URL: process.env.SMTP_URL ?? 'smtp://localhost:1025',
       },
     },
     {

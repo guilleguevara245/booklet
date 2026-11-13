@@ -36,10 +36,11 @@ Monorepo TypeScript de punta a punta, con tipos y validaciones compartidos entre
 | -------------------- | --------------------------------------------------------- |
 | API                  | NestJS 12 sobre Fastify, Drizzle ORM, Zod                 |
 | Base de datos        | PostgreSQL 16                                             |
-| Colas y caché        | Redis 7 (BullMQ en la fase de recordatorios)              |
+| Colas y caché        | Redis 7, BullMQ                                           |
 | Panel web y reservas | React 19, Vite, TanStack Query, Tailwind CSS              |
 | App mobile           | Expo (React Native), en la fase 8                         |
 | Monorepo             | pnpm workspaces + Turborepo                               |
+| Mails                | Nodemailer (SMTP); Mailpit en desarrollo y CI             |
 | Calidad              | Vitest, Testing Library, ESLint, Prettier, GitHub Actions |
 
 ```
@@ -62,7 +63,8 @@ docs/brand       logo e ícono
       cancelar y reprogramar desde el panel.
 - [x] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`, reservar sin cuenta, agregar al calendario y
       "Mis turnos" para clientes.
-- [ ] **Fase 6 · Recordatorios:** BullMQ, mail 24 h y 1 h antes, cancelar o reprogramar con un link.
+- [x] **Fase 6 · Recordatorios:** BullMQ, mail 24 h y 1 h antes, cancelar o reprogramar con un link,
+      verificación de email e invitaciones por mail.
 - [ ] **Fase 7 · Pagos:** seña con Mercado Pago, webhooks idempotentes, reembolsos.
 - [ ] **Fase 8 · App mobile:** Expo con notificaciones push.
 - [ ] **Fase 9 · Cierre:** estadísticas, accesibilidad, observabilidad, privacidad y dominio propio.
@@ -121,6 +123,27 @@ horario, y reserva sin crear cuenta. Al terminar puede agregar el turno a su cal
   <img src="docs/screenshots/reserva-publica.png" alt="Página pública de reservas de la Peluquería Demo: servicios con precio, elección de profesional, días de la semana, horarios y formulario de datos" width="420">
 </p>
 
+## Mails y recordatorios
+
+Todos los mails salen por una cola de BullMQ en Redis: si el servidor de mails falla, se reintenta 5 veces con
+espera exponencial, y una reserva nunca falla porque el mail no salió.
+
+- **Confirmación** al reservar, con el detalle del turno y un botón para gestionarlo.
+- **Recordatorios** 24 h y 1 h antes, como trabajos demorados con un id fijo por turno. Al cancelar se borran y
+  al reprogramar se vuelven a programar. Antes de mandar se relee el turno: si se canceló o se movió, no sale.
+- **Avisos** cuando el negocio cancela o mueve el turno.
+- **Gestionar sin cuenta:** el link `/turno/:token` deja ver, cancelar o cambiar el turno. El token es un HMAC
+  del id del turno con `APP_SECRET` y en la base se guarda solo su hash.
+- **Verificación de email:** al crear la cuenta llega un link firmado que vence a las 48 h. Se puede pedir de
+  nuevo una vez por minuto.
+- **Invitaciones al equipo:** el link `/invitacion/:token` muestra qué negocio invita; para aceptar hay que
+  entrar o crear la cuenta con el email invitado.
+- **Plantillas** con estilos en línea y versión de texto plano, con el logo y los colores de Booklet.
+
+En desarrollo los mails llegan a [Mailpit](http://localhost:8025) (incluido en `docker compose`). Las pruebas de
+punta a punta de CI leen la casilla de Mailpit por su API: reservan, abren el link del mail y cancelan; y
+aceptan una invitación creando la cuenta desde el link.
+
 ## Panel en tiempo real
 
 La agenda del día muestra una columna por profesional, en la zona horaria de la sucursal. Cuando entra, se
@@ -158,39 +181,43 @@ avisan qué cambió (también a lectores de pantalla).
   turnos, pero no el catálogo ni el equipo. Todo exige sesión salvo lo que usa la página pública: catálogo,
   disponibilidad y reservas.
 - **Invitaciones:** el link solo lo puede aceptar la cuenta del email invitado, sirve una vez y vence a los 7
-  días. Hasta la fase 6 el link se devuelve en la respuesta; después viaja por mail.
+  días. El link viaja por mail y también vuelve en la respuesta, para copiarlo a mano.
 
 ## API
 
 Columna "Quién": 🌐 sin sesión, 👤 con sesión, 🛠 staff o dueña del negocio, 👑 solo dueña.
 
-| Método                  | Ruta                                               | Quién  | Qué hace                                          |
-| ----------------------- | -------------------------------------------------- | ------ | ------------------------------------------------- |
-| `GET`                   | `/health`                                          | 🌐     | estado de la API, la base de datos y Redis        |
-| `POST`                  | `/auth/register` · `/auth/login` · `/auth/google`  | 🌐     | crea la cuenta o inicia sesión                    |
-| `POST`                  | `/auth/logout`                                     | 🌐     | cierra la sesión                                  |
-| `GET`                   | `/auth/me`                                         | 👤     | la persona y los negocios que administra          |
-| `POST`                  | `/businesses`                                      | 👤     | crea un negocio y deja a quien lo crea como dueña |
-| `GET`                   | `/businesses/by-slug/:slug` · `/businesses/:id`    | 🌐     | datos públicos de un negocio                      |
-| `PATCH`                 | `/businesses/:id`                                  | 👑     | modifica un negocio                               |
-| `GET`                   | `/businesses/:id/locations` · `services` · `staff` | 🌐     | catálogo para la página de reservas               |
-| `POST` `PATCH`          | `/businesses/:id/locations` · `services` · `staff` | 👑     | carga y modifica el catálogo                      |
-| `GET`                   | `/businesses/:id/staff/:staffId`                   | 🛠      | un profesional                                    |
-| `PUT`                   | `/businesses/:id/staff/:staffId/services`          | 👑     | servicios que hace un profesional                 |
-| `GET` · `PUT`           | `/businesses/:id/staff/:staffId/schedule`          | 🛠 · 👑 | horario semanal en una sucursal                   |
-| `GET` · `POST` `DELETE` | `/businesses/:id/closures`                         | 🛠 · 👑 | feriados, vacaciones y otros cierres              |
-| `GET`                   | `/businesses/:id/availability?serviceId&from&to`   | 🌐     | turnos libres (opcional: `staffId`, `locationId`) |
-| `POST`                  | `/businesses/:id/bookings`                         | 🌐     | reserva un turno (con sesión, queda en su cuenta) |
-| `GET`                   | `/businesses/:id/bookings` · `/:bookingId`         | 🛠      | turnos del negocio                                |
-| `POST`                  | `/businesses/:id/bookings/:bookingId/cancel`       | 🛠      | cancela un turno y libera el horario              |
-| `POST`                  | `/businesses/:id/bookings/:bookingId/reschedule`   | 🛠      | mueve un turno de horario, profesional o sucursal |
-| `GET`                   | `/businesses/:id/members`                          | 🛠      | el equipo                                         |
-| `DELETE`                | `/businesses/:id/members/:userId`                  | 👑     | saca a alguien del equipo                         |
-| `GET` `POST` `DELETE`   | `/businesses/:id/invitations`                      | 👑     | invitaciones pendientes                           |
-| `GET`                   | `/invitations/:token`                              | 🌐     | qué negocio invita y a qué email                  |
-| `POST`                  | `/invitations/:token/accept`                       | 👤     | acepta la invitación                              |
-| `GET`                   | `/me/bookings`                                     | 👤     | mis turnos en cualquier negocio                   |
-| `POST`                  | `/me/bookings/:bookingId/cancel`                   | 👤     | cancela un turno propio                           |
+| Método                  | Ruta                                               | Quién  | Qué hace                                           |
+| ----------------------- | -------------------------------------------------- | ------ | -------------------------------------------------- |
+| `GET`                   | `/health`                                          | 🌐     | estado de la API, la base de datos y Redis         |
+| `POST`                  | `/auth/register` · `/auth/login` · `/auth/google`  | 🌐     | crea la cuenta o inicia sesión                     |
+| `POST`                  | `/auth/logout`                                     | 🌐     | cierra la sesión                                   |
+| `POST`                  | `/auth/verify-email`                               | 🌐     | confirma el email con el token del mail            |
+| `POST`                  | `/auth/resend-verification`                        | 👤     | vuelve a mandar el mail de verificación            |
+| `GET`                   | `/auth/me`                                         | 👤     | la persona y los negocios que administra           |
+| `POST`                  | `/businesses`                                      | 👤     | crea un negocio y deja a quien lo crea como dueña  |
+| `GET`                   | `/businesses/by-slug/:slug` · `/businesses/:id`    | 🌐     | datos públicos de un negocio                       |
+| `PATCH`                 | `/businesses/:id`                                  | 👑     | modifica un negocio                                |
+| `GET`                   | `/businesses/:id/locations` · `services` · `staff` | 🌐     | catálogo para la página de reservas                |
+| `POST` `PATCH`          | `/businesses/:id/locations` · `services` · `staff` | 👑     | carga y modifica el catálogo                       |
+| `GET`                   | `/businesses/:id/staff/:staffId`                   | 🛠      | un profesional                                     |
+| `PUT`                   | `/businesses/:id/staff/:staffId/services`          | 👑     | servicios que hace un profesional                  |
+| `GET` · `PUT`           | `/businesses/:id/staff/:staffId/schedule`          | 🛠 · 👑 | horario semanal en una sucursal                    |
+| `GET` · `POST` `DELETE` | `/businesses/:id/closures`                         | 🛠 · 👑 | feriados, vacaciones y otros cierres               |
+| `GET`                   | `/businesses/:id/availability?serviceId&from&to`   | 🌐     | turnos libres (opcional: `staffId`, `locationId`)  |
+| `POST`                  | `/businesses/:id/bookings`                         | 🌐     | reserva un turno (con sesión, queda en su cuenta)  |
+| `GET`                   | `/businesses/:id/bookings` · `/:bookingId`         | 🛠      | turnos del negocio                                 |
+| `POST`                  | `/businesses/:id/bookings/:bookingId/cancel`       | 🛠      | cancela un turno y libera el horario               |
+| `POST`                  | `/businesses/:id/bookings/:bookingId/reschedule`   | 🛠      | mueve un turno de horario, profesional o sucursal  |
+| `GET`                   | `/businesses/:id/members`                          | 🛠      | el equipo                                          |
+| `DELETE`                | `/businesses/:id/members/:userId`                  | 👑     | saca a alguien del equipo                          |
+| `GET` `POST` `DELETE`   | `/businesses/:id/invitations`                      | 👑     | invitaciones pendientes                            |
+| `GET`                   | `/invitations/:token`                              | 🌐     | qué negocio invita y a qué email                   |
+| `POST`                  | `/invitations/:token/accept`                       | 👤     | acepta la invitación                               |
+| `GET`                   | `/manage/:token` · `/manage/:token/options?date`   | 🌐     | un turno y sus horarios para cambiarlo, sin cuenta |
+| `POST`                  | `/manage/:token/cancel` · `reschedule`             | 🌐     | cancela o mueve el turno desde el link del mail    |
+| `GET`                   | `/me/bookings`                                     | 👤     | mis turnos en cualquier negocio                    |
+| `POST`                  | `/me/bookings/:bookingId/cancel`                   | 👤     | cancela un turno propio                            |
 
 Los errores de validación responden 400 con el campo y el motivo de cada problema. Sin sesión, 401; sin el rol
 necesario, 403. Un horario tomado o no ofrecido, o un turno que ya pasó o ya está cancelado, responde 409.
@@ -201,7 +228,7 @@ Requisitos: Node 22.22 o superior, pnpm 10 y Docker.
 
 ```bash
 pnpm install
-pnpm db:up                                # PostgreSQL y Redis
+pnpm db:up                                # PostgreSQL, Redis y Mailpit
 cp apps/api/.env.example apps/api/.env
 pnpm build && pnpm db:seed                # negocio de ejemplo; dueña: demo@booklet.local / demo-booklet
 pnpm dev                                  # API en :3000 y web en :5173
@@ -210,16 +237,29 @@ pnpm dev                                  # API en :3000 y web en :5173
 Entrá a <http://localhost:5173/entrar> con la dueña de ejemplo para ver el panel. La portada muestra el estado de
 la API, que consulta `GET /health`: responde 200 si la base de datos y Redis
 contestan, y 503 con el detalle si alguno está caído. La API aplica las migraciones pendientes al arrancar.
+Los mails se ven en <http://localhost:8025>.
 
-| Comando                        | Qué hace                                                                                        |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `pnpm dev`                     | levanta todo en modo desarrollo                                                                 |
-| `pnpm e2e`                     | compila y corre las pruebas de punta a punta con Playwright (necesita `pnpm db:up`)             |
-| `pnpm test`                    | corre las pruebas (las de integración necesitan `pnpm db:up` y las variables de `.env.example`) |
-| `pnpm lint` / `pnpm typecheck` | revisa estilo y tipos                                                                           |
-| `pnpm build`                   | compila todo                                                                                    |
-| `pnpm db:seed`                 | carga el negocio de ejemplo (necesita `pnpm build`)                                             |
-| `pnpm format`                  | formatea con Prettier                                                                           |
+Variables de la API (`apps/api/.env.example`): las de la base y Redis, y además:
+
+| Variable         | Para qué                                                                         |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `APP_SECRET`     | firma los links de los mails; en producción es obligatoria (32 caracteres o más) |
+| `WEB_URL`        | dirección de la web, para armar los links                                        |
+| `MAIL_TRANSPORT` | `smtp` (por defecto), `log` (solo los escribe en el log) o `memory` (pruebas)    |
+| `SMTP_URL`       | servidor de mails, por defecto Mailpit en `smtp://localhost:1025`                |
+| `MAIL_FROM`      | remitente                                                                        |
+| `WORKER_ENABLED` | `false` para una instancia que solo encola y no procesa trabajos                 |
+
+| Comando                                                          | Qué hace                                                                                        |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm dev`                                                       | levanta todo en modo desarrollo                                                                 |
+| `pnpm e2e`                                                       | compila y corre las pruebas de punta a punta con Playwright (necesita `pnpm db:up`)             |
+| `MAIL_TRANSPORT=smtp MAILPIT_URL=http://localhost:8025 pnpm e2e` | suma las pruebas de mails contra Mailpit                                                        |
+| `pnpm test`                                                      | corre las pruebas (las de integración necesitan `pnpm db:up` y las variables de `.env.example`) |
+| `pnpm lint` / `pnpm typecheck`                                   | revisa estilo y tipos                                                                           |
+| `pnpm build`                                                     | compila todo                                                                                    |
+| `pnpm db:seed`                                                   | carga el negocio de ejemplo (necesita `pnpm build`)                                             |
+| `pnpm format`                                                    | formatea con Prettier                                                                           |
 
 ## Licencia
 

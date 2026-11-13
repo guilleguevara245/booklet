@@ -1,5 +1,5 @@
 import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
-import { createBusiness, openAgenda, PASSWORD, uniqueEmail } from './helpers';
+import { createBusiness, openAgenda, PASSWORD, pickSlot, uniqueEmail } from './helpers';
 
 const API = 'http://localhost:3000';
 
@@ -9,17 +9,6 @@ async function ownerWithBusiness(request: import('@playwright/test').APIRequestC
     data: { email, name: 'Dueña', password: PASSWORD },
   });
   return { email, b: await createBusiness(request, email) };
-}
-
-/** Elige servicio, mañana y un horario en la página pública. */
-async function pickSlot(page: Page, slug: string, time: string) {
-  await page.goto(`/n/${slug}`);
-  await page.getByRole('radio', { name: /^Corte/ }).click();
-  await page.getByRole('button', { name: 'Semana siguiente' }).waitFor();
-  // El primer día con lugar queda elegido solo; se pasa a mañana para no depender de la hora.
-  const tomorrow = page.getByRole('listitem').getByRole('button').nth(1);
-  await tomorrow.click();
-  await page.getByRole('button', { name: time, exact: true }).click();
 }
 
 async function fillContact(page: Page, name: string) {

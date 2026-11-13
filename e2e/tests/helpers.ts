@@ -93,3 +93,14 @@ export async function openAgenda(browser: Browser, email: string, businessId: st
   await page.getByText('En vivo').waitFor();
   return page;
 }
+
+/** Elige servicio, mañana y un horario en la página pública. */
+export async function pickSlot(page: Page, slug: string, time: string) {
+  await page.goto(`/n/${slug}`);
+  await page.getByRole('radio', { name: /^Corte/ }).click();
+  await page.getByRole('button', { name: 'Semana siguiente' }).waitFor();
+  // El primer día con lugar queda elegido solo; se pasa a mañana para no depender de la hora.
+  const tomorrow = page.getByRole('listitem').getByRole('button').nth(1);
+  await tomorrow.click();
+  await page.getByRole('button', { name: time, exact: true }).click();
+}
