@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -46,6 +46,9 @@ export const WEB_ORIGIN = 'http://localhost:5173';
  * `as` manda los encabezados de una sesión (ver `signUp`).
  */
 export function client(app: NestFastifyApplication) {
+  // Cada cliente usa su propia IP, así los límites de intentos por IP no se mezclan entre
+  // archivos de prueba ni entre corridas.
+  const ip = `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cuerpos de prueba sin tipar
   return async <T = any>(
     method: Method,
@@ -58,6 +61,7 @@ export function client(app: NestFastifyApplication) {
       url,
       payload: payload as object | undefined,
       headers: as,
+      remoteAddress: ip,
     });
     const body = res.body ? (res.json() as T) : (undefined as T);
     return { status: res.statusCode, body, headers: res.headers };

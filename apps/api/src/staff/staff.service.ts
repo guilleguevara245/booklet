@@ -30,6 +30,7 @@ export class StaffService {
       name: r.name,
       active: r.active,
       serviceIds: r.services.map((s) => s.serviceId).sort(),
+      userId: r.userId,
     }));
   }
 
@@ -45,6 +46,7 @@ export class StaffService {
       name: row.name,
       active: row.active,
       serviceIds: row.services.map((s) => s.serviceId).sort(),
+      userId: row.userId,
     };
   }
 

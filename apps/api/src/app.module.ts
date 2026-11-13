@@ -11,6 +11,7 @@ import { LocationsModule } from './locations/locations.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { StaffModule } from './staff/staff.module.js';
+import { TeamModule } from './team/team.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StaffModule } from './staff/staff.module.js';
     ClosuresModule,
     AvailabilityModule,
     BookingsModule,
+    TeamModule,
   ],
 })
 export class AppModule {}

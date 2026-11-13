@@ -13,6 +13,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -56,9 +57,14 @@ export const staff = pgTable(
       .references(() => businesses.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     active: boolean('active').notNull().default(true),
+    /** Cuenta de la persona, si aceptó una invitación vinculada a este profesional. */
+    userId: uuid('user_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
-  (t) => [index('staff_business_idx').on(t.businessId)],
+  (t) => [
+    index('staff_business_idx').on(t.businessId),
+    uniqueIndex('staff_business_user_key').on(t.businessId, t.userId),
+  ],
 );
 
 /** Servicio que se reserva. `bufferMinutes` es el tiempo libre que queda después de cada turno. */
@@ -261,6 +267,33 @@ export const memberships = pgTable(
   (t) => [
     primaryKey({ columns: [t.businessId, t.userId] }),
     index('memberships_user_idx').on(t.userId),
+  ],
+);
+
+/**
+ * Invitación para sumarse al equipo de un negocio. Como las sesiones, guarda solo el hash
+ * del token. Con `staffId`, al aceptarla la cuenta queda vinculada a ese profesional.
+ */
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: memberRole('role').notNull(),
+    staffId: uuid('staff_id').references(() => staff.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    acceptedBy: uuid('accepted_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    uniqueIndex('invitations_token_hash_key').on(t.tokenHash),
+    index('invitations_business_idx').on(t.businessId),
   ],
 );
 

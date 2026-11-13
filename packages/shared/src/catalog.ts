@@ -124,6 +124,8 @@ export interface Staff {
   name: string;
   active: boolean;
   serviceIds: string[];
+  /** Cuenta vinculada, si la persona aceptó una invitación. */
+  userId: string | null;
 }
 
 // --- Horario semanal ---
