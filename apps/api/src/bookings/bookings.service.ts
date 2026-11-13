@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   AvailableSlot,
@@ -10,7 +10,7 @@ import type {
   MyBooking,
   RescheduleBooking,
 } from '@booklet/shared';
-import { and, asc, desc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { BookingEvents } from '../realtime/booking-events.js';
 import { BusinessesService } from '../businesses/businesses.service.js';
@@ -18,17 +18,15 @@ import { rethrowOverlap } from '../common/db-errors.js';
 import { toBooking } from '../common/mappers.js';
 import { DB, type Database } from '../database/database.module.js';
 import type { SessionUser } from '../auth/sessions.service.js';
-import { bookings, businesses, locations, services, staff } from '../database/schema.js';
+import { bookings } from '../database/schema.js';
 import { LocationsService } from '../locations/locations.service.js';
 import { ServicesService } from '../services/services.service.js';
 import { StaffService } from '../staff/staff.service.js';
 import { BookingNotifier } from './booking-notifier.js';
+import { BookingViews } from './booking-views.js';
+import { ManageTokens } from './manage-tokens.js';
 
 const MINUTE = 60_000;
-
-/** Token del link "gestionar mi turno": 192 bits al azar, imposible de adivinar. */
-export const newManageToken = () => randomBytes(24).toString('base64url');
-export const hashManageToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -58,6 +56,8 @@ export class BookingsService {
     @Inject(AvailabilityService) private readonly availability: AvailabilityService,
     @Inject(BookingEvents) private readonly events: BookingEvents,
     @Inject(BookingNotifier) private readonly notifier: BookingNotifier,
+    @Inject(ManageTokens) private readonly tokens: ManageTokens,
+    @Inject(BookingViews) private readonly views: BookingViews,
   ) {}
 
   /**
@@ -88,13 +88,16 @@ export class BookingsService {
     if (!offered) throw new ConflictException(SLOT_NOT_OFFERED);
 
     const endsAt = new Date(start.getTime() + service.durationMinutes * MINUTE);
-    const manageToken = newManageToken();
+    // El id se arma acá para derivar el token del link antes de guardar.
+    const id = randomUUID();
+    const manageToken = this.tokens.forBooking(id);
     try {
       const row = await this.db.transaction(async (tx) => {
         await lockStaffAgenda(tx, input.staffId);
         const [inserted] = await tx
           .insert(bookings)
           .values({
+            id,
             businessId,
             locationId: input.locationId,
             staffId: input.staffId,
@@ -106,14 +109,14 @@ export class BookingsService {
             startsAt: start,
             endsAt,
             blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
-            manageTokenHash: hashManageToken(manageToken),
+            manageTokenHash: this.tokens.hash(manageToken),
           })
           .returning();
         return inserted!;
       });
       const booking = toBooking(row);
       this.events.publish('booking.created', booking);
-      await this.notifier.created(await this.view(booking.id), manageToken);
+      await this.notifier.created(await this.view(booking.id));
       return { ...booking, manageToken };
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
@@ -172,6 +175,7 @@ export class BookingsService {
     if (!row) throw new ConflictException(ALREADY_CANCELLED);
     const booking = toBooking(row);
     this.events.publish('booking.cancelled', booking);
+    await this.notifier.cancelled(await this.view(booking.id));
     return booking;
   }
 
@@ -234,6 +238,7 @@ export class BookingsService {
       if (!row) throw new ConflictException(ALREADY_CANCELLED);
       const booking = toBooking(row);
       this.events.publish('booking.rescheduled', booking);
+      await this.notifier.rescheduled(await this.view(booking.id));
       return booking;
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
@@ -245,45 +250,14 @@ export class BookingsService {
    * también los que reservó con ese email antes de tener cuenta.
    */
   async listMine(user: SessionUser): Promise<MyBooking[]> {
-    return this.views(this.ownedBy(user), 200);
+    return this.views.list(this.ownedBy(user), 200);
   }
 
   /** Un turno con los nombres del negocio, servicio, profesional y sucursal. */
   async view(id: string): Promise<MyBooking> {
-    const [found] = await this.views(eq(bookings.id, id), 1);
+    const found = await this.views.find(id);
     if (!found) throw new NotFoundException('Turno no encontrado');
     return found;
-  }
-
-  private async views(where: SQL | undefined, limit: number): Promise<MyBooking[]> {
-    const rows = await this.db
-      .select({
-        booking: bookings,
-        businessName: businesses.name,
-        businessSlug: businesses.slug,
-        serviceName: services.name,
-        staffName: staff.name,
-        locationName: locations.name,
-        locationAddress: locations.address,
-        locationTimezone: locations.timezone,
-      })
-      .from(bookings)
-      .innerJoin(businesses, eq(businesses.id, bookings.businessId))
-      .innerJoin(services, eq(services.id, bookings.serviceId))
-      .innerJoin(staff, eq(staff.id, bookings.staffId))
-      .innerJoin(locations, eq(locations.id, bookings.locationId))
-      .where(where)
-      .orderBy(desc(bookings.startsAt))
-      .limit(limit);
-    return rows.map((r) => ({
-      ...toBooking(r.booking),
-      business: { name: r.businessName, slug: r.businessSlug },
-      serviceName: r.serviceName,
-      staffName: r.staffName,
-      locationName: r.locationName,
-      locationAddress: r.locationAddress,
-      locationTimezone: r.locationTimezone,
-    }));
   }
 
   /** Quien reservó cancela su propio turno. Un turno ajeno responde 404, como si no existiera. */

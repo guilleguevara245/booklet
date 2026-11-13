@@ -25,7 +25,8 @@ import { Public } from '../auth/request-user.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { DB, type Database } from '../database/database.module.js';
 import { bookings } from '../database/schema.js';
-import { BookingsService, hashManageToken } from './bookings.service.js';
+import { BookingsService } from './bookings.service.js';
+import { ManageTokens } from './manage-tokens.js';
 
 const tokenPipe = new ZodPipe(z.string().regex(/^[\w-]{20,64}$/, 'Link inválido'));
 
@@ -39,6 +40,7 @@ export class ManageBookingController {
   constructor(
     @Inject(BookingsService) private readonly bookings: BookingsService,
     @Inject(DB) private readonly db: Database,
+    @Inject(ManageTokens) private readonly tokens: ManageTokens,
   ) {}
 
   @Get()
@@ -79,7 +81,7 @@ export class ManageBookingController {
 
   private async find(token: string) {
     const row = await this.db.query.bookings.findFirst({
-      where: eq(bookings.manageTokenHash, hashManageToken(token)),
+      where: eq(bookings.manageTokenHash, this.tokens.hash(token)),
       columns: { id: true, businessId: true },
     });
     // Mismo error para un token inventado que para uno viejo: no da pistas.

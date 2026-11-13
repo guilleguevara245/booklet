@@ -8,6 +8,7 @@ import {
 import { type Job, Worker } from 'bullmq';
 import { ENV, type Env } from '../config/env.js';
 import { MAILER, type Mailer } from '../mail/mailer.js';
+import { JobHandlers } from './job-handlers.js';
 import { QUEUE_NAME, type JobData, type JobName } from './jobs.js';
 
 /** Procesa los trabajos de la cola. Con WORKER_ENABLED=false, este proceso solo los encola. */
@@ -19,9 +20,11 @@ export class JobsWorker implements OnModuleInit, OnApplicationShutdown {
   constructor(
     @Inject(ENV) private readonly env: Env,
     @Inject(MAILER) private readonly mailer: Mailer,
+    @Inject(JobHandlers) private readonly handlers: JobHandlers,
   ) {}
 
   onModuleInit() {
+    this.handlers.register('mail.send', (message) => this.mailer.send(message));
     if (!this.env.WORKER_ENABLED) return;
     this.worker = new Worker(
       QUEUE_NAME,
@@ -44,13 +47,12 @@ export class JobsWorker implements OnModuleInit, OnApplicationShutdown {
     await this.worker?.close();
   }
 
-  private async process<N extends JobName>(job: Job<JobData[N], unknown, N>): Promise<void> {
-    switch (job.name) {
-      case 'mail.send':
-        await this.mailer.send(job.data as JobData['mail.send']);
-        return;
-      default:
-        throw new Error(`Trabajo desconocido: ${job.name as string}`);
-    }
+  /** Procesa un trabajo. Público para poder correrlo directo en las pruebas. */
+  async process<N extends JobName>(
+    job: Pick<Job<JobData[N], unknown, N>, 'name' | 'data'>,
+  ): Promise<void> {
+    const handler = this.handlers.get(job.name);
+    if (!handler) throw new Error(`Trabajo desconocido: ${job.name as string}`);
+    await handler(job.data);
   }
 }

@@ -1,6 +1,7 @@
 import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { ENV, type Env } from '../config/env.js';
+import { JobHandlers } from './job-handlers.js';
 import { JOB_QUEUE, QUEUE_NAME } from './jobs.js';
 import { JobsService } from './jobs.service.js';
 import { JobsWorker } from './jobs.worker.js';
@@ -26,8 +27,9 @@ import { JobsWorker } from './jobs.worker.js';
     },
     JobsService,
     JobsWorker,
+    JobHandlers,
   ],
-  exports: [JobsService],
+  exports: [JobsService, JobHandlers, JobsWorker],
 })
 export class JobsModule implements OnApplicationShutdown {
   constructor(@Inject(JOB_QUEUE) private readonly queue: Queue) {}

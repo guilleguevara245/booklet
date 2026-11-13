@@ -58,7 +58,7 @@ describe.skipIf(!integrationReady)(
 
     it('al reservar manda la confirmación con el link para gestionar el turno', async () => {
       const { booking, email } = await setup();
-      expect(booking.manageToken).toMatch(/^[\w-]{32}$/);
+      expect(booking.manageToken).toMatch(/^[\w-]{43}$/);
 
       const mail = await waitForMail(app, email);
       expect(mail.subject).toBe('Turno confirmado en Barbería <Sur>');

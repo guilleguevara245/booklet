@@ -30,4 +30,16 @@ describe('loadEnv', () => {
     expect(loadEnv({ ...valid, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
     expect(() => loadEnv({ ...valid, TRUST_PROXY: 'quizás' })).toThrow(/TRUST_PROXY/);
   });
+
+  it('en desarrollo acepta APP_SECRET vacío (el de .env.example)', () => {
+    expect(loadEnv({ ...valid, APP_SECRET: '' }).APP_SECRET.length).toBeGreaterThanOrEqual(32);
+  });
+
+  it('exige APP_SECRET propio en producción', () => {
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production' })).toThrow(/APP_SECRET/);
+    const secret = 'x'.repeat(40);
+    expect(loadEnv({ ...valid, NODE_ENV: 'production', APP_SECRET: secret }).APP_SECRET).toBe(
+      secret,
+    );
+  });
 });
