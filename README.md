@@ -60,7 +60,8 @@ docs/brand       logo e ícono
 - [x] **Fase 3 · Cuentas y roles:** dueño, staff y cliente; Google o mail; invitaciones.
 - [x] **Fase 4 · Agenda en tiempo real:** panel web con la agenda del día, WebSockets con una sala por negocio,
       cancelar y reprogramar desde el panel.
-- [ ] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`.
+- [x] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`, reservar sin cuenta, agregar al calendario y
+      "Mis turnos" para clientes.
 - [ ] **Fase 6 · Recordatorios:** BullMQ, mail 24 h y 1 h antes, cancelar o reprogramar con un link.
 - [ ] **Fase 7 · Pagos:** seña con Mercado Pago, webhooks idempotentes, reembolsos.
 - [ ] **Fase 8 · App mobile:** Expo con notificaciones push.
@@ -100,6 +101,25 @@ Esa prueba encontró un problema real: con horarios distintos que se pisan, Post
 `deadlock detected` (un error 500). Ahora, antes de guardar, cada reserva toma un candado sobre la agenda de ese
 profesional (`pg_advisory_xact_lock`): las reservas del mismo profesional se ponen en fila y la segunda recibe
 un 409 limpio. La restricción sigue siendo la garantía; el candado solo evita el bloqueo mutuo.
+
+## Página pública de reservas
+
+Cada negocio tiene su página en `/n/su-direccion`. El cliente elige servicio, profesional (o "cualquiera"), día y
+horario, y reserva sin crear cuenta. Al terminar puede agregar el turno a su calendario (archivo `.ics`).
+
+- **Una semana por pedido:** la disponibilidad de los 7 días se pide de una vez, así los días sin lugar aparecen
+  deshabilitados sin un pedido por día.
+- **Todo en la dirección:** servicio, profesional, día y horario viven en la URL, así un link compartido abre en el
+  mismo paso.
+- **Si otra persona ganó el horario** mientras se completaban los datos, la API responde 409 y la página lo avisa,
+  vuelve a pedir la disponibilidad y deja elegir otro.
+- **Con cuenta** se completan nombre y email, y el turno queda en "Mis turnos", desde donde se puede cancelar.
+- **Accesibilidad:** las pruebas de punta a punta pasan [axe](https://github.com/dequelabs/axe-core) contra WCAG
+  2.1 AA en la portada, el inicio de sesión, la reserva completa y el panel, en tema claro y oscuro.
+
+<p align="center">
+  <img src="docs/screenshots/reserva-publica.png" alt="Página pública de reservas de la Peluquería Demo: servicios con precio, elección de profesional, días de la semana, horarios y formulario de datos" width="420">
+</p>
 
 ## Panel en tiempo real
 

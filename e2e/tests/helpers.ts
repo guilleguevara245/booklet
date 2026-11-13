@@ -80,7 +80,8 @@ export async function loginInBrowser(page: Page, email: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Contraseña').fill(PASSWORD);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await page.waitForURL(/\/panel/);
+  // Quien administra un negocio va al panel; quien no, a sus turnos.
+  await page.waitForURL(/\/(panel|mis-turnos)/);
 }
 
 /** Abre un navegador aparte con la sesión de esa persona, en la agenda de mañana. */

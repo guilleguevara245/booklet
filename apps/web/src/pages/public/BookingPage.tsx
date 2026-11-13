@@ -1,4 +1,5 @@
 import type { Booking, Location, Service } from '@booklet/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
@@ -70,6 +71,7 @@ export function BookingPage() {
     [update],
   );
   const chosenStaff = staff.data?.find((s) => s.id === choice.with);
+  const queryClient = useQueryClient();
   const [booked, setBooked] = useState<Booking | null>(null);
   // El horario elegido se ocupó mientras la persona completaba sus datos.
   const [slotTaken, setSlotTaken] = useState(false);
@@ -183,6 +185,8 @@ export function BookingPage() {
                   start={choice.start}
                   onSlotTaken={() => {
                     setSlotTaken(true);
+                    // La disponibilidad cambió: se vuelve a pedir para no ofrecer el horario tomado.
+                    void queryClient.invalidateQueries({ queryKey: ['availability', id] });
                     update({ hora: null, con: null });
                   }}
                   onBooked={setBooked}

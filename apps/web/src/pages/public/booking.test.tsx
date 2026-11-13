@@ -111,9 +111,10 @@ describe('elegir día y horario', () => {
     const fetchMock = mockWithSlots();
     renderApp(`/n/barberia-sur?servicio=${SVC}`);
 
-    const martes = await screen.findByRole('button', { name: 'martes 8 de enero' });
+    // jsdom pega los bloques al calcular el nombre ("mar8de enero"); Chrome dice "mar 8 de enero".
+    const martes = await screen.findByRole('button', { name: /^mar ?8 ?de enero$/ });
     await waitFor(() => expect(martes).toHaveAttribute('aria-pressed', 'true'));
-    expect(screen.getByRole('button', { name: 'lunes 7 de enero, sin horarios' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^lun ?7 ?de enero, sin horarios$/ })).toBeDisabled();
 
     const url = availabilityUrls(fetchMock).at(-1)!;
     expect(url.searchParams.get('from')).toBe('2030-01-07');

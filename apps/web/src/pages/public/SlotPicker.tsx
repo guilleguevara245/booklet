@@ -149,19 +149,27 @@ export function SlotPicker({ businessId, service, location, staff, choice, onCha
             const iso = d.toISODate()!;
             const available = byDay.has(iso);
             const selected = iso === day;
-            const label = d.setLocale('es-AR').toFormat("cccc d 'de' LLLL");
+            const short = d.setLocale('es-AR').toFormat('ccc');
+            const month = d.setLocale('es-AR').toFormat("'de' LLLL");
             return (
               <li key={iso}>
+                {/* El nombre accesible incluye lo que se ve ("mar 8") más el mes y si hay lugar. */}
                 <button
                   type="button"
                   onClick={() => onChange({ day: iso, start: null, with: null })}
                   disabled={!available}
                   aria-pressed={selected}
-                  aria-label={available ? label : `${label}, sin horarios`}
                   className={`flex w-full flex-col items-center rounded-xl border py-2 focus-visible:outline-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-brand bg-brand text-white' : 'border-slate-200 bg-white hover:border-brand dark:border-white/15 dark:bg-white/5'}`}
                 >
-                  <span className="text-xs uppercase">{d.setLocale('es-AR').toFormat('ccc')}</span>
-                  <span className="text-lg font-bold">{d.day}</span>
+                  <span className="text-xs uppercase">{short} </span>
+                  <span className="text-lg font-bold">
+                    {d.day}
+                    <span className="sr-only">
+                      {' '}
+                      {month}
+                      {available ? '' : ', sin horarios'}
+                    </span>
+                  </span>
                 </button>
               </li>
             );
