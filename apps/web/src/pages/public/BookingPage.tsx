@@ -1,11 +1,11 @@
-import type { Location, Service } from '@booklet/shared';
-import { useCallback, useId } from 'react';
-import { DateTime } from 'luxon';
+import type { Booking, Location, Service } from '@booklet/shared';
+import { useCallback, useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
 import { useLocations, usePublicBusiness, useServices, useStaff } from '../../lib/business';
 import { formatDuration, formatPrice } from '../../lib/format';
 import { OptionCard, Step } from '../../components/options';
+import { BookingConfirmed, ConfirmBooking } from './ConfirmBooking';
 import { PublicLayout } from './PublicLayout';
 import { ANY, type SlotChoice, SlotPicker } from './SlotPicker';
 
@@ -70,6 +70,10 @@ export function BookingPage() {
     [update],
   );
   const chosenStaff = staff.data?.find((s) => s.id === choice.with);
+  const [booked, setBooked] = useState<Booking | null>(null);
+  // El horario elegido se ocupó mientras la persona completaba sus datos.
+  const [slotTaken, setSlotTaken] = useState(false);
+  const bookedStaff = staff.data?.find((s) => s.id === booked?.staffId);
 
   if (business.isError) {
     const notFound = business.error instanceof ApiError && business.error.status === 404;
@@ -105,55 +109,86 @@ export function BookingPage() {
             )}
           </header>
 
-          {activeLocations.length > 1 && (
-            <LocationStep
-              locations={activeLocations}
-              value={location?.id}
-              onChange={(sucursal) => update({ sucursal, dia: null, hora: null, con: null })}
-            />
-          )}
-
-          {services.isSuccess && activeServices.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-muted dark:border-white/20 dark:text-slate-300">
-              Este negocio todavía no publicó sus servicios.
-            </p>
-          ) : (
-            <ServiceStep
-              services={activeServices}
-              value={service?.id}
-              onChange={(servicio) =>
-                update({ servicio, profesional: null, dia: null, hora: null })
-              }
-            />
-          )}
-
-          {!service && activeServices.length > 0 && (
-            <p className="text-muted dark:text-slate-300">
-              Elegí un servicio para ver los horarios.
-            </p>
-          )}
-
-          {service && location && staff.data && (
-            <SlotPicker
-              key={`${service.id}:${location.id}`}
-              businessId={id}
+          {booked && service && location && bookedStaff ? (
+            <BookingConfirmed
+              booking={booked}
+              businessName={business.data.name}
               service={service}
               location={location}
-              staff={staff.data}
-              choice={choice}
-              onChange={onChoice}
+              staff={bookedStaff}
+              onAnother={() => {
+                setBooked(null);
+                update({ servicio: null, profesional: null, dia: null, hora: null, con: null });
+              }}
             />
-          )}
+          ) : (
+            <>
+              {activeLocations.length > 1 && (
+                <LocationStep
+                  locations={activeLocations}
+                  value={location?.id}
+                  onChange={(sucursal) => update({ sucursal, dia: null, hora: null, con: null })}
+                />
+              )}
 
-          {service && location && choice.start && chosenStaff && (
-            <p role="status" className="rounded-xl bg-violet-50 p-4 dark:bg-violet-500/15">
-              {service.name} con {chosenStaff.name},{' '}
-              {DateTime.fromISO(choice.start)
-                .setZone(location.timezone)
-                .setLocale('es-AR')
-                .toFormat("cccc d 'de' LLLL 'a las' HH:mm")}
-              .
-            </p>
+              {services.isSuccess && activeServices.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-muted dark:border-white/20 dark:text-slate-300">
+                  Este negocio todavía no publicó sus servicios.
+                </p>
+              ) : (
+                <ServiceStep
+                  services={activeServices}
+                  value={service?.id}
+                  onChange={(servicio) =>
+                    update({ servicio, profesional: null, dia: null, hora: null, con: null })
+                  }
+                />
+              )}
+
+              {!service && activeServices.length > 0 && (
+                <p className="text-muted dark:text-slate-300">
+                  Elegí un servicio para ver los horarios.
+                </p>
+              )}
+
+              {service && location && staff.data && (
+                <SlotPicker
+                  key={`${service.id}:${location.id}`}
+                  businessId={id}
+                  service={service}
+                  location={location}
+                  staff={staff.data}
+                  choice={choice}
+                  onChange={onChoice}
+                />
+              )}
+
+              {slotTaken && !choice.start && (
+                <p
+                  role="alert"
+                  className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
+                >
+                  Ese horario se acaba de ocupar. Elegí otro.
+                </p>
+              )}
+
+              {service && location && choice.start && chosenStaff && (
+                <ConfirmBooking
+                  key={`${choice.start}:${chosenStaff.id}`}
+                  businessId={id}
+                  businessName={business.data.name}
+                  service={service}
+                  location={location}
+                  staff={chosenStaff}
+                  start={choice.start}
+                  onSlotTaken={() => {
+                    setSlotTaken(true);
+                    update({ hora: null, con: null });
+                  }}
+                  onBooked={setBooked}
+                />
+              )}
+            </>
           )}
         </div>
       )}

@@ -3,6 +3,7 @@ import type {
   AvailableSlot,
   Booking,
   Business,
+  CreateBooking,
   CreateBusiness,
   Location,
   MeResponse,
@@ -168,5 +169,15 @@ export function useAvailability(
         signal,
       );
     },
+  });
+}
+
+/** Reservar un turno desde la página pública. Con sesión, el turno queda en la cuenta. */
+export function useCreateBooking(businessId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<Booking, ApiError, CreateBooking>({
+    mutationFn: (body) => api<Booking>('POST', `/businesses/${businessId}/bookings`, body),
+    // Lo que se reservó (o lo que otra persona tomó, si dio 409) cambia la disponibilidad.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['availability', businessId] }),
   });
 }

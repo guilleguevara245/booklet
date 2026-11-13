@@ -124,9 +124,9 @@ describe('elegir día y horario', () => {
     // Con "cualquiera", las 10:00 aparecen una sola vez aunque estén libres con dos personas.
     expect(screen.getAllByRole('button', { name: '10:00' })).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: '11:30' }));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Corte con Mia, martes 8 de enero a las 11:30.',
-    );
+    const datos = await screen.findByRole('region', { name: 'Tus datos' });
+    expect(datos).toHaveTextContent('Corte con Mia');
+    expect(datos).toHaveTextContent('martes 8 de enero a las 11:30');
   });
 
   it('filtra por profesional', async () => {
@@ -148,5 +148,106 @@ describe('elegir día y horario', () => {
       expect(availabilityUrls(fetchMock).at(-1)!.searchParams.get('from')).toBe('2030-01-14'),
     );
     expect(screen.getByText(/No hay horarios libres esta semana/)).toBeInTheDocument();
+  });
+});
+
+describe('confirmar la reserva', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2030-01-07T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const START = '2030-01-08T13:00:00.000Z';
+  const url = `/n/barberia-sur?servicio=${SVC}&dia=2030-01-08&hora=${encodeURIComponent(START)}&con=${LEO}`;
+  const created = {
+    id: '77777777-7777-4777-8777-777777777777',
+    businessId: BIZ,
+    locationId: location.id,
+    staffId: LEO,
+    serviceId: SVC,
+    customer: { name: 'Juana Pérez', email: 'juana@example.com', phone: null },
+    startsAt: START,
+    endsAt: '2030-01-08T13:30:00.000Z',
+    status: 'confirmed',
+    cancelledAt: null,
+    cancelReason: null,
+    createdAt: '2030-01-07T12:00:00.000Z',
+  };
+
+  function mockBooking(post: { status: number; body?: unknown }, me: unknown = null) {
+    const posted: unknown[] = [];
+    const fetchMock = mockPublic({
+      'GET /auth/me': me ? { status: 200, body: me } : { status: 401, body: {} },
+    });
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path.endsWith('/availability')) {
+        const slots = [{ start: START, end: START, staffId: LEO, locationId: location.id }];
+        return new Response(JSON.stringify({ serviceId: SVC, from: '', to: '', slots }));
+      }
+      if (init?.method === 'POST' && path.endsWith('/bookings')) {
+        posted.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify(post.body ?? {}), { status: post.status });
+      }
+      return original(input, init);
+    });
+    return posted;
+  }
+
+  it('reserva con los datos de contacto y muestra la confirmación', async () => {
+    const posted = mockBooking({ status: 201, body: created });
+    renderApp(url);
+    await userEvent.type(await screen.findByLabelText('Nombre y apellido'), 'Juana Pérez');
+    await userEvent.type(screen.getByLabelText('Email'), 'juana@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar turno' }));
+
+    const done = await screen.findByRole('heading', { name: '¡Listo! Tu turno quedó reservado' });
+    expect(done).toHaveFocus();
+    expect(posted).toEqual([
+      {
+        serviceId: SVC,
+        staffId: LEO,
+        locationId: location.id,
+        startsAt: START,
+        customer: { name: 'Juana Pérez', email: 'juana@example.com', phone: null },
+      },
+    ]);
+    expect(screen.getByRole('link', { name: 'Agregar al calendario' })).toHaveAttribute(
+      'download',
+      'turno.ics',
+    );
+  });
+
+  it('si el horario se ocupó en el medio, avisa y pide elegir otro', async () => {
+    mockBooking({ status: 409, body: { message: 'Ese horario ya fue tomado. Elegí otro.' } });
+    const { router } = renderApp(url);
+    await userEvent.type(await screen.findByLabelText('Nombre y apellido'), 'Juana');
+    await userEvent.type(screen.getByLabelText('Email'), 'juana@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar turno' }));
+    await waitFor(() => expect(router.state.location.search).not.toContain('hora='));
+    expect(screen.queryByRole('region', { name: 'Tus datos' })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Ese horario se acaba de ocupar');
+  });
+
+  it('con sesión, completa nombre y email', async () => {
+    mockBooking(
+      { status: 201, body: created },
+      {
+        user: {
+          id: 'u',
+          email: 'ana@example.com',
+          name: 'Ana',
+          emailVerified: true,
+          hasPassword: true,
+          hasGoogle: false,
+        },
+        memberships: [],
+      },
+    );
+    renderApp(url);
+    await waitFor(() => expect(screen.getByLabelText('Nombre y apellido')).toHaveValue('Ana'));
+    expect(screen.getByLabelText('Email')).toHaveValue('ana@example.com');
   });
 });
