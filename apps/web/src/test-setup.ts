@@ -10,6 +10,17 @@ vi.mock('socket.io-client', async () => {
   return { io: () => fakeSocket.current };
 });
 
+// jsdom no implementa los diálogos modales: lo mínimo para abrir y cerrar `<dialog>`.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  };
+}
+
 // Sin `globals` de Vitest, Testing Library no limpia sola entre pruebas.
 afterEach(() => cleanup());
 

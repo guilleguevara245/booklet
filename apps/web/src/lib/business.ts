@@ -1,4 +1,5 @@
 import type {
+  AvailableSlot,
   Booking,
   Business,
   CreateBusiness,
@@ -89,5 +90,43 @@ export function useCreateBusiness() {
             }
           : me,
       ),
+  });
+}
+
+/** Horarios libres para mover un turno en un día local. */
+export function useRescheduleOptions(businessId: string, bookingId: string, date: string | null) {
+  return useQuery({
+    queryKey: [...businessKeys.bookings(businessId), 'options', bookingId, date],
+    enabled: date !== null,
+    queryFn: ({ signal }) =>
+      api<AvailableSlot[]>(
+        'GET',
+        `/businesses/${businessId}/bookings/${bookingId}/reschedule-options?date=${date}`,
+        undefined,
+        signal,
+      ),
+  });
+}
+
+export function useCancelBooking(businessId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<Booking, ApiError, { id: string; reason?: string }>({
+    mutationFn: ({ id, reason }) =>
+      api<Booking>('POST', `/businesses/${businessId}/bookings/${id}/cancel`, {
+        reason: reason?.trim() || null,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: businessKeys.bookings(businessId) }),
+  });
+}
+
+export function useRescheduleBooking(businessId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<Booking, ApiError, { id: string; startsAt: string; staffId: string }>({
+    mutationFn: ({ id, startsAt, staffId }) =>
+      api<Booking>('POST', `/businesses/${businessId}/bookings/${id}/reschedule`, {
+        startsAt,
+        staffId,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: businessKeys.bookings(businessId) }),
   });
 }

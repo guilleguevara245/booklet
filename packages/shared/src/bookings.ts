@@ -76,3 +76,9 @@ export interface MyBooking extends Booking {
   staffName: string;
   locationName: string;
 }
+
+/** Horarios a los que se puede mover un turno, en un día local de su sucursal. */
+export const rescheduleOptionsQuerySchema = z.object({
+  date: z.iso.date({ error: 'Formato YYYY-MM-DD' }),
+});
+export type RescheduleOptionsQuery = z.infer<typeof rescheduleOptionsQuerySchema>;

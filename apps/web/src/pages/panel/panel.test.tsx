@@ -175,3 +175,83 @@ describe('agenda en vivo', () => {
     expect(await screen.findByText(/Nuevo turno: Juana Pérez/)).toBeInTheDocument();
   });
 });
+
+describe('acciones sobre un turno', () => {
+  /** Agenda con un turno; `bookings` cambia según lo que haga la prueba. */
+  function setup() {
+    const state = {
+      bookings: [booking] as unknown[],
+      posted: [] as { url: string; body: unknown }[],
+    };
+    const fetchMock = mockBusiness();
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/bookings?')) return new Response(JSON.stringify(state.bookings));
+      if (url.includes('/reschedule-options')) {
+        return new Response(
+          JSON.stringify([
+            {
+              start: '2030-01-07T14:00:00.000Z',
+              end: '2030-01-07T14:30:00.000Z',
+              staffId: MIA,
+              locationId: LOC,
+            },
+            {
+              start: '2030-01-07T15:00:00.000Z',
+              end: '2030-01-07T15:30:00.000Z',
+              staffId: LEO,
+              locationId: LOC,
+            },
+          ]),
+        );
+      }
+      if (init?.method === 'POST') {
+        state.posted.push({ url, body: JSON.parse(String(init.body)) });
+        state.bookings = [];
+        return new Response(JSON.stringify(booking));
+      }
+      return original(input, init);
+    });
+    renderApp(`/panel/${BIZ}?fecha=2030-01-07`);
+    return state;
+  }
+
+  it('abre el detalle y cancela con motivo', async () => {
+    const state = setup();
+    await userEvent.click(await screen.findByRole('button', { name: /Juana Pérez/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Juana Pérez' });
+    expect(within(dialog).getByText('juana@example.com')).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar turno' }));
+    await userEvent.type(within(dialog).getByLabelText('Motivo (opcional)'), 'Avisó por teléfono');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Sí, cancelar turno' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(state.posted).toEqual([
+      {
+        url: `/api/businesses/${BIZ}/bookings/${booking.id}/cancel`,
+        body: { reason: 'Avisó por teléfono' },
+      },
+    ]);
+  });
+
+  it('reprograma eligiendo un horario de otro profesional', async () => {
+    const state = setup();
+    await userEvent.click(await screen.findByRole('button', { name: /Juana Pérez/ }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reprogramar' }));
+
+    const leo = await within(dialog).findByRole('group', { name: 'Leo' });
+    const mia = within(dialog).getByRole('group', { name: 'Mia' });
+    // La profesional actual aparece primero.
+    expect(mia.compareDocumentPosition(leo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await userEvent.click(within(leo).getByRole('button', { name: '12:00' }));
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Mover a las 12:00 con Leo' }),
+    );
+    await waitFor(() => expect(state.posted).toHaveLength(1));
+    expect(state.posted[0]!.body).toEqual({ startsAt: '2030-01-07T15:00:00.000Z', staffId: LEO });
+  });
+});

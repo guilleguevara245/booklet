@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  AvailableSlot,
   Booking,
   CancelBooking,
   CreateBooking,
@@ -278,6 +279,27 @@ export class BookingsService {
     return user.emailVerified
       ? or(eq(bookings.customerUserId, user.id), eq(bookings.customerEmail, user.email))
       : eq(bookings.customerUserId, user.id);
+  }
+
+  /**
+   * Horarios libres para mover un turno en un día, con cualquier profesional que haga el
+   * servicio en la misma sucursal. El horario actual del turno cuenta como libre.
+   */
+  async rescheduleOptions(
+    businessId: string,
+    id: string,
+    date: string,
+    now = new Date(),
+  ): Promise<AvailableSlot[]> {
+    const current = await this.get(businessId, id);
+    this.assertModifiable(current, now);
+    const { slots } = await this.availability.find(
+      businessId,
+      { serviceId: current.serviceId, locationId: current.locationId, from: date, to: date },
+      now,
+      { ignoreBookingId: id },
+    );
+    return slots;
   }
 
   private assertModifiable(booking: Booking, now: Date): void {

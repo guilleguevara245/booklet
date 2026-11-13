@@ -4,12 +4,15 @@ import {
   createBookingSchema,
   listBookingsQuerySchema,
   rescheduleBookingSchema,
+  rescheduleOptionsQuerySchema,
+  type AvailableSlot,
   type Booking,
   type CancelBooking,
   type CreateBooking,
   type ListBookingsQuery,
   type MyBooking,
   type RescheduleBooking,
+  type RescheduleOptionsQuery,
 } from '@booklet/shared';
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
@@ -58,6 +61,16 @@ export class BookingsController {
     @Body(new ZodPipe(cancelBookingSchema)) body: CancelBooking,
   ): Promise<Booking> {
     return this.bookings.cancel(businessId, id, body);
+  }
+
+  @Get(':id/reschedule-options')
+  @Roles('owner', 'staff')
+  rescheduleOptions(
+    @Param('businessId', UuidPipe) businessId: string,
+    @Param('id', UuidPipe) id: string,
+    @Query(new ZodPipe(rescheduleOptionsQuerySchema)) query: RescheduleOptionsQuery,
+  ): Promise<AvailableSlot[]> {
+    return this.bookings.rescheduleOptions(businessId, id, query.date);
   }
 
   @Post(':id/reschedule')

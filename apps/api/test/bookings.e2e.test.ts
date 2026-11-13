@@ -258,6 +258,21 @@ describe.skipIf(!integrationReady)('reservas (e2e)', () => {
       expect(res.body.staffId).toBe(bea.id);
     });
 
+    it('ofrece como opciones los horarios libres, incluido el propio y los cercanos', async () => {
+      const { base, book } = await setup();
+      const booking = (await book(NINE)).body;
+      await book('2030-01-07T10:45:00-03:00'); // otro turno: ocupa de 10:45 a 12:00 con el margen
+      const res = await api(
+        'GET',
+        `${base}/bookings/${booking.id}/reschedule-options?date=2030-01-07`,
+      );
+      expect(res.status).toBe(200);
+      const starts = (res.body as { start: string }[]).map((s) => s.start.slice(11, 16));
+      // 09:15 y 09:30 se pisan con el turno mismo (09:00 a 10:15), pero cuentan como libres.
+      // Desde 09:45, el turno con su margen ya pisaría el de las 10:45.
+      expect(starts).toEqual(['12:00', '12:15', '12:30']);
+    });
+
     it('no deja reprogramar un turno cancelado', async () => {
       const { base, book } = await setup();
       const booking = (await book(NINE)).body;

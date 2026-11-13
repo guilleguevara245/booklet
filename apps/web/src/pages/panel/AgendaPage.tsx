@@ -11,6 +11,7 @@ import {
   useStaff,
 } from '../../lib/business';
 import { type LiveNotice, type LiveStatus, useBusinessLive } from '../../lib/realtime';
+import { BookingDialog } from './BookingDialog';
 import { PanelLayout } from './PanelLayout';
 
 const PX_PER_MINUTE = 1.2; // una hora = 72 px
@@ -40,6 +41,7 @@ export function AgendaPage() {
   const bookings = useDayBookings(businessId, location ? range : null);
   const live = useBusinessLive(businessId);
   const highlighted = useHighlight(live.notice);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const go = (next: string | null, sucursal = location?.id) => {
     const p = new URLSearchParams();
@@ -54,6 +56,8 @@ export function AgendaPage() {
     (s) => s.active || dayBookings.some((b) => b.staffId === s.id),
   );
   const serviceNames = new Map((services.data ?? []).map((s: Service) => [s.id, s.name]));
+  // Si el turno abierto se cancela o se mueve a otro día, el diálogo se cierra solo.
+  const selected = dayBookings.find((b) => b.id === selectedId);
   const label = DateTime.fromISO(date).setLocale('es-AR').toFormat("cccc d 'de' LLLL");
 
   return (
@@ -138,6 +142,18 @@ export function AgendaPage() {
             serviceNames={serviceNames}
             loading={bookings.isPending || staff.isPending}
             highlighted={highlighted}
+            onSelect={setSelectedId}
+          />
+        )}
+        {selected && (
+          <BookingDialog
+            key={selected.id}
+            businessId={businessId}
+            booking={selected}
+            timezone={timezone}
+            staff={staff.data ?? []}
+            serviceName={serviceNames.get(selected.serviceId) ?? 'Servicio'}
+            onClose={() => setSelectedId(null)}
           />
         )}
         <Announcer notice={live.notice} timezone={timezone} />
@@ -166,9 +182,18 @@ interface GridProps {
   serviceNames: Map<string, string>;
   loading: boolean;
   highlighted: string | null;
+  onSelect: (id: string) => void;
 }
 
-function DayGrid({ columns, bookings, timezone, serviceNames, loading, highlighted }: GridProps) {
+function DayGrid({
+  columns,
+  bookings,
+  timezone,
+  serviceNames,
+  loading,
+  highlighted,
+  onSelect,
+}: GridProps) {
   const local = (iso: string) => DateTime.fromISO(iso).setZone(timezone);
   // El rango visible se agranda si hay turnos fuera del horario habitual.
   const startHour = Math.min(DEFAULT_START_HOUR, ...bookings.map((b) => local(b.startsAt).hour));
@@ -244,22 +269,32 @@ function DayGrid({ columns, bookings, timezone, serviceNames, loading, highlight
                     return (
                       <li
                         key={b.id}
-                        className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-sm transition-shadow dark:bg-violet-500/20 ${b.id === highlighted ? 'ring-2 ring-brand ring-offset-1 motion-safe:animate-pulse' : ''}`}
+                        className="absolute inset-x-1"
                         style={{ top, height: Math.max(h - 2, 28) }}
                       >
-                        <p className={compact ? 'truncate' : 'font-medium'}>
-                          <span className="font-medium">
-                            <time dateTime={b.startsAt}>{local(b.startsAt).toFormat('HH:mm')}</time>
-                            –<time dateTime={b.endsAt}>{local(b.endsAt).toFormat('HH:mm')}</time>{' '}
-                            {b.customer.name}
+                        <button
+                          type="button"
+                          onClick={() => onSelect(b.id)}
+                          className={`size-full overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-left text-sm transition-shadow hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand dark:bg-violet-500/20 dark:hover:bg-violet-500/30 ${b.id === highlighted ? 'ring-2 ring-brand ring-offset-1 motion-safe:animate-pulse' : ''}`}
+                        >
+                          <span className={`block ${compact ? 'truncate' : ''}`}>
+                            <span className="font-medium">
+                              <time dateTime={b.startsAt}>
+                                {local(b.startsAt).toFormat('HH:mm')}
+                              </time>
+                              –<time dateTime={b.endsAt}>{local(b.endsAt).toFormat('HH:mm')}</time>{' '}
+                              {b.customer.name}
+                            </span>
+                            {compact && (
+                              <span className="text-muted dark:text-slate-300"> · {service}</span>
+                            )}
                           </span>
-                          {compact && (
-                            <span className="text-muted dark:text-slate-300"> · {service}</span>
+                          {!compact && (
+                            <span className="block truncate text-muted dark:text-slate-300">
+                              {service}
+                            </span>
                           )}
-                        </p>
-                        {!compact && (
-                          <p className="truncate text-muted dark:text-slate-300">{service}</p>
-                        )}
+                        </button>
                       </li>
                     );
                   })}
