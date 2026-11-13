@@ -1,10 +1,17 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { AvailabilityQuery, AvailabilityResponse, AvailableSlot } from '@booklet/shared';
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import { DB, type Database } from '../database/database.module.js';
-import { closures, locations, staff, staffServices, workingHours } from '../database/schema.js';
+import {
+  bookings,
+  closures,
+  locations,
+  staff,
+  staffServices,
+  workingHours,
+} from '../database/schema.js';
 import { ServicesService } from '../services/services.service.js';
 import { computeSlots, type WeeklyRule } from './compute.js';
 
@@ -90,6 +97,27 @@ export class AvailabilityService {
               ),
             );
 
+    // Turnos confirmados de esos profesionales, en cualquier sucursal: nadie atiende en dos
+    // lugares a la vez. Cada turno ocupa hasta el fin de su margen.
+    const bookingRows =
+      staffIds.length === 0
+        ? []
+        : await this.db
+            .select({
+              staffId: bookings.staffId,
+              start: bookings.startsAt,
+              end: bookings.blockedUntil,
+            })
+            .from(bookings)
+            .where(
+              and(
+                inArray(bookings.staffId, staffIds),
+                eq(bookings.status, 'confirmed'),
+                lt(bookings.startsAt, rangeEnd),
+                gt(bookings.blockedUntil, rangeStart),
+              ),
+            );
+
     const notBefore = new Date(now.getTime() + MIN_LEAD_MINUTES * 60_000);
     const slots: AvailableSlot[] = [];
     for (const g of groups.values()) {
@@ -99,7 +127,8 @@ export class AvailabilityService {
             (c.locationId === null || c.locationId === g.locationId) &&
             (c.staffId === null || c.staffId === g.staffId),
         )
-        .map((c) => ({ start: c.startsAt, end: c.endsAt }));
+        .map((c) => ({ start: c.startsAt, end: c.endsAt }))
+        .concat(bookingRows.filter((b) => b.staffId === g.staffId));
       const starts = computeSlots({
         timezone: g.timezone,
         from: q.from,

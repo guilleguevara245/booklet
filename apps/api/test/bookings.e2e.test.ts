@@ -48,7 +48,14 @@ describe.skipIf(!integrationReady)('reservas (e2e)', () => {
         customer,
         ...extra,
       });
-    return { base, location, service, ana, book };
+    const availability = async (params = '') => {
+      const res = await api(
+        'GET',
+        `${base}/availability?serviceId=${service.id}&from=2030-01-07&to=2030-01-07${params}`,
+      );
+      return (res.body.slots as { start: string }[]).map((s) => s.start.slice(11, 16));
+    };
+    return { base, location, service, ana, book, availability };
   }
 
   it('reserva un horario ofrecido', async () => {
@@ -135,5 +142,26 @@ describe.skipIf(!integrationReady)('reservas (e2e)', () => {
     const b = await setup();
     const booking = (await b.book(NINE)).body;
     expect((await api('GET', `${a.base}/bookings/${booking.id}`)).status).toBe(404);
+  });
+
+  describe('disponibilidad con turnos tomados', () => {
+    it('saca de la oferta los horarios que pisan un turno, contando su margen', async () => {
+      const { book, availability } = await setup();
+      expect(await availability()).toHaveLength(9); // 09:00 a 11:00 cada 15 minutos
+      await book(NINE); // ocupa de 09:00 a 10:15 con el margen
+      // Horas en UTC: 10:15 local = 13:15Z.
+      expect(await availability()).toEqual(['13:15', '13:30', '13:45', '14:00']);
+    });
+
+    it('un turno en otra sucursal también ocupa a la profesional', async () => {
+      const { base, ana, service, book, availability } = await setup();
+      const centro = (await api('POST', `${base}/locations`, { name: 'Centro' })).body;
+      await api('PUT', `${base}/staff/${ana.id}/schedule`, {
+        locationId: centro.id,
+        rules: [{ weekday: 1, start: '09:00', end: '12:00' }],
+      });
+      await book(NINE, { locationId: centro.id, serviceId: service.id });
+      expect(await availability()).not.toContain('12:00');
+    });
   });
 });
