@@ -47,3 +47,9 @@ export interface AuthResponse {
 
 export const SESSION_COOKIE = 'booklet_session';
 export const NATIVE_CLIENT_HEADER = 'x-booklet-client';
+
+/** Inicio con Google: el `credential` (ID token) que devuelve Google Identity Services. */
+export const googleLoginSchema = z.object({
+  idToken: z.string().min(20).max(4096),
+});
+export type GoogleLogin = z.infer<typeof googleLoginSchema>;

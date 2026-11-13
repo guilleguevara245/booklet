@@ -6,6 +6,8 @@ const envSchema = z.object({
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /** ID de cliente OAuth de Google. Sin él, el inicio con Google responde 503. */
+  GOOGLE_CLIENT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

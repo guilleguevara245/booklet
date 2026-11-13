@@ -1,12 +1,33 @@
 import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
-import { createApp } from '../src/app.factory.js';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { configureApp, createApp } from '../src/app.factory.js';
+import { AppModule } from '../src/app.module.js';
 
 /** Las pruebas de integración necesitan PostgreSQL y Redis reales. */
 export const integrationReady = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
 
 export async function startApp(): Promise<NestFastifyApplication> {
   const app = await createApp({ CORS_ORIGIN: 'http://localhost:5173' });
+  await app.init();
+  await app.getHttpAdapter().getInstance().ready();
+  return app;
+}
+
+/** Arma la app reemplazando proveedores, por ejemplo el verificador de Google. */
+export async function startAppWith(
+  overrides: { provide: unknown; useValue: unknown }[],
+): Promise<NestFastifyApplication> {
+  let builder = Test.createTestingModule({ imports: [AppModule] });
+  for (const o of overrides) {
+    builder = builder.overrideProvider(o.provide as symbol).useValue(o.useValue);
+  }
+  const moduleRef = await builder.compile();
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
+    logger: ['error', 'warn'],
+  });
+  await configureApp(app, { CORS_ORIGIN: WEB_ORIGIN });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;

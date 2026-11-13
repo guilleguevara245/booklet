@@ -1,10 +1,12 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
 import {
+  googleLoginSchema,
   loginSchema,
   NATIVE_CLIENT_HEADER,
   registerSchema,
   SESSION_COOKIE,
   type AuthResponse,
+  type GoogleLogin,
   type Login,
   type Register,
   type User,
@@ -41,6 +43,18 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<AuthResponse> {
     const { user, token } = await this.auth.login(body, clientInfo(req));
+    return this.startSession(req, reply, user, token);
+  }
+
+  /** Recibe el ID token de Google Identity Services (el `credential` del botón de Google). */
+  @Post('google')
+  @HttpCode(200)
+  async google(
+    @Body(new ZodPipe(googleLoginSchema)) body: GoogleLogin,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<AuthResponse> {
+    const { user, token } = await this.auth.loginWithGoogle(body, clientInfo(req));
     return this.startSession(req, reply, user, token);
   }
 

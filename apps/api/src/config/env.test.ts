@@ -20,4 +20,8 @@ describe('loadEnv', () => {
   it('falla con un mensaje que nombra la variable que falta', () => {
     expect(() => loadEnv({ REDIS_URL: valid.REDIS_URL })).toThrow(/DATABASE_URL/);
   });
+
+  it('trata GOOGLE_CLIENT_ID vacío como no configurado', () => {
+    expect(loadEnv({ ...valid, GOOGLE_CLIENT_ID: '' }).GOOGLE_CLIENT_ID).toBeUndefined();
+  });
 });
