@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from './auth/auth.module.js';
 import { AvailabilityModule } from './availability/availability.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
@@ -17,6 +18,7 @@ import { StaffModule } from './staff/staff.module.js';
     DatabaseModule,
     RedisModule,
     HealthModule,
+    AuthModule,
     BusinessesModule,
     LocationsModule,
     ServicesModule,
