@@ -8,6 +8,20 @@
       "when": 1794504441411,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794520669386,
+      "tag": "0001_bookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794520670164,
+      "tag": "0002_bookings_no_overlap",
+      "breakpoints": true
     }
   ]
 }

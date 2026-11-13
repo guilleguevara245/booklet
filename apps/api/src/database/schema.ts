@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  pgEnum,
   pgTable,
   primaryKey,
   smallint,
@@ -144,6 +145,53 @@ export const closures = pgTable(
   (t) => [
     index('closures_business_range_idx').on(t.businessId, t.startsAt),
     check('closures_range_check', sql`${t.endsAt} > ${t.startsAt}`),
+  ],
+);
+
+/** Estado de un turno. Solo los confirmados ocupan la agenda. */
+export const bookingStatus = pgEnum('booking_status', ['confirmed', 'cancelled']);
+
+/**
+ * Turno reservado. `blockedUntil` es el fin del turno más el margen del servicio: la agenda
+ * del profesional queda ocupada hasta ese momento.
+ *
+ * La migración 0002 agrega una restricción de exclusión: dos turnos confirmados del mismo
+ * profesional no pueden superponerse. La base de datos lo garantiza aunque lleguen dos
+ * reservas al mismo tiempo.
+ */
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => locations.id, { onDelete: 'restrict' }),
+    staffId: uuid('staff_id')
+      .notNull()
+      .references(() => staff.id, { onDelete: 'restrict' }),
+    serviceId: uuid('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'restrict' }),
+    customerName: text('customer_name').notNull(),
+    customerEmail: text('customer_email').notNull(),
+    customerPhone: text('customer_phone'),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    blockedUntil: timestamp('blocked_until', { withTimezone: true }).notNull(),
+    status: bookingStatus('status').notNull().default('confirmed'),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('bookings_business_starts_idx').on(t.businessId, t.startsAt),
+    index('bookings_staff_starts_idx').on(t.staffId, t.startsAt),
+    check('bookings_range_check', sql`${t.endsAt} > ${t.startsAt}`),
+    check('bookings_blocked_check', sql`${t.blockedUntil} >= ${t.endsAt}`),
   ],
 );
 
