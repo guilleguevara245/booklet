@@ -51,6 +51,8 @@ export class SessionGuard implements CanActivate {
   }
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    // Los WebSockets validan la sesión al conectar, en el RealtimeGateway.
+    if (ctx.getType() !== 'http') return true;
     const req = ctx.switchToHttp().getRequest<FastifyRequest>();
     const token = readToken(req);
     if (token) {

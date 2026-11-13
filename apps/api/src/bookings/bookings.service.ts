@@ -9,6 +9,7 @@ import type {
 } from '@booklet/shared';
 import { and, asc, desc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import { AvailabilityService } from '../availability/availability.service.js';
+import { BookingEvents } from '../realtime/booking-events.js';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import { rethrowOverlap } from '../common/db-errors.js';
 import { toBooking } from '../common/mappers.js';
@@ -47,6 +48,7 @@ export class BookingsService {
     @Inject(StaffService) private readonly staff: StaffService,
     @Inject(LocationsService) private readonly locations: LocationsService,
     @Inject(AvailabilityService) private readonly availability: AvailabilityService,
+    @Inject(BookingEvents) private readonly events: BookingEvents,
   ) {}
 
   /**
@@ -98,7 +100,9 @@ export class BookingsService {
           .returning();
         return inserted!;
       });
-      return toBooking(row);
+      const booking = toBooking(row);
+      this.events.publish('booking.created', booking);
+      return booking;
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
     }
@@ -154,7 +158,9 @@ export class BookingsService {
       .returning();
     // Si otra cancelación ganó en el medio, la condición sobre el estado no encuentra la fila.
     if (!row) throw new ConflictException(ALREADY_CANCELLED);
-    return toBooking(row);
+    const booking = toBooking(row);
+    this.events.publish('booking.cancelled', booking);
+    return booking;
   }
 
   /**
@@ -214,7 +220,9 @@ export class BookingsService {
         return updated;
       });
       if (!row) throw new ConflictException(ALREADY_CANCELLED);
-      return toBooking(row);
+      const booking = toBooking(row);
+      this.events.publish('booking.rescheduled', booking);
+      return booking;
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
     }
