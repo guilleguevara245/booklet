@@ -1,6 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Booking, CreateBooking, ListBookingsQuery } from '@booklet/shared';
-import { and, asc, eq, gt, lt, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, lt, sql, type SQL } from 'drizzle-orm';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import { rethrowOverlap } from '../common/db-errors.js';
@@ -12,6 +12,19 @@ import { ServicesService } from '../services/services.service.js';
 import { StaffService } from '../staff/staff.service.js';
 
 const MINUTE = 60_000;
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * Pone en fila las escrituras sobre la agenda de un mismo profesional hasta que termine la
+ * transacción. Sin esto, dos reservas simultáneas de horarios distintos que se pisan pueden
+ * trabarse entre sí al chequear la restricción de exclusión (PostgreSQL responde "deadlock
+ * detected"). Con la fila, la segunda espera a la primera y recibe un 409 limpio. La
+ * restricción sigue siendo la garantía; esto solo evita el bloqueo mutuo.
+ */
+async function lockStaffAgenda(tx: Tx, staffId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${staffId}, 0))`);
+}
 export const SLOT_TAKEN = 'Ese horario ya fue tomado. Elegí otro.';
 export const SLOT_NOT_OFFERED = 'Ese horario no está disponible para este servicio.';
 
@@ -49,22 +62,26 @@ export class BookingsService {
 
     const endsAt = new Date(start.getTime() + service.durationMinutes * MINUTE);
     try {
-      const [row] = await this.db
-        .insert(bookings)
-        .values({
-          businessId,
-          locationId: input.locationId,
-          staffId: input.staffId,
-          serviceId: input.serviceId,
-          customerName: input.customer.name,
-          customerEmail: input.customer.email,
-          customerPhone: input.customer.phone ?? null,
-          startsAt: start,
-          endsAt,
-          blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
-        })
-        .returning();
-      return toBooking(row!);
+      const row = await this.db.transaction(async (tx) => {
+        await lockStaffAgenda(tx, input.staffId);
+        const [inserted] = await tx
+          .insert(bookings)
+          .values({
+            businessId,
+            locationId: input.locationId,
+            staffId: input.staffId,
+            serviceId: input.serviceId,
+            customerName: input.customer.name,
+            customerEmail: input.customer.email,
+            customerPhone: input.customer.phone ?? null,
+            startsAt: start,
+            endsAt,
+            blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
+          })
+          .returning();
+        return inserted!;
+      });
+      return toBooking(row);
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
     }
