@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchHealth } from './api';
+import { fetchHealth } from './lib/health';
 
 const LABELS = { database: 'Base de datos', redis: 'Redis' } as const;
 
