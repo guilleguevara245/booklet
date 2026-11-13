@@ -124,4 +124,23 @@ export class AvailabilityService {
 
     return { serviceId: service.id, from: q.from, to: q.to, slots };
   }
+
+  /**
+   * Indica si `start` es uno de los horarios que se ofrecen para ese servicio, profesional y
+   * sucursal. Se usa al reservar, así un turno solo puede tomarse en un horario válido.
+   */
+  async isOffered(
+    businessId: string,
+    p: { serviceId: string; staffId: string; locationId: string; timezone: string; start: Date },
+    now = new Date(),
+  ): Promise<boolean> {
+    const day = DateTime.fromJSDate(p.start, { zone: p.timezone }).toISODate()!;
+    const { slots } = await this.find(
+      businessId,
+      { serviceId: p.serviceId, staffId: p.staffId, locationId: p.locationId, from: day, to: day },
+      now,
+    );
+    const wanted = p.start.toISOString();
+    return slots.some((s) => s.start === wanted);
+  }
 }

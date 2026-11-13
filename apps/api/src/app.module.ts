@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AvailabilityModule } from './availability/availability.module.js';
+import { BookingsModule } from './bookings/bookings.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
 import { ClosuresModule } from './closures/closures.module.js';
 import { ConfigModule } from './config/config.module.js';
@@ -22,6 +23,7 @@ import { StaffModule } from './staff/staff.module.js';
     StaffModule,
     ClosuresModule,
     AvailabilityModule,
+    BookingsModule,
   ],
 })
 export class AppModule {}

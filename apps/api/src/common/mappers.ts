@@ -1,5 +1,5 @@
-import type { Business, Closure, Location, Service } from '@booklet/shared';
-import type { businesses, closures, locations, services } from '../database/schema.js';
+import type { Booking, Business, Closure, Location, Service } from '@booklet/shared';
+import type { bookings, businesses, closures, locations, services } from '../database/schema.js';
 
 // Pasan filas de la base al formato público de la API (fechas ISO, horas HH:MM).
 
@@ -38,6 +38,21 @@ export const toClosure = (r: typeof closures.$inferSelect): Closure => ({
   startsAt: r.startsAt.toISOString(),
   endsAt: r.endsAt.toISOString(),
   reason: r.reason,
+});
+
+export const toBooking = (r: typeof bookings.$inferSelect): Booking => ({
+  id: r.id,
+  businessId: r.businessId,
+  locationId: r.locationId,
+  staffId: r.staffId,
+  serviceId: r.serviceId,
+  customer: { name: r.customerName, email: r.customerEmail, phone: r.customerPhone },
+  startsAt: r.startsAt.toISOString(),
+  endsAt: r.endsAt.toISOString(),
+  status: r.status,
+  cancelledAt: r.cancelledAt?.toISOString() ?? null,
+  cancelReason: r.cancelReason,
+  createdAt: r.createdAt.toISOString(),
 });
 
 /** `09:00:00` → `09:00` */
