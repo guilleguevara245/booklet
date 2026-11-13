@@ -6,6 +6,12 @@ const envSchema = z.object({
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /**
+   * Detrás de un proxy (Render, Fly, un balanceador), la IP real del cliente viene en
+   * `X-Forwarded-For`. Sin esto, todos los pedidos parecen venir del proxy y el límite de
+   * intentos por IP los cuenta juntos. No activarlo sin proxy: cualquiera podría inventar su IP.
+   */
+  TRUST_PROXY: z.stringbool().default(false),
   /** ID de cliente OAuth de Google. Sin él, el inicio con Google responde 503. */
   GOOGLE_CLIENT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 });

@@ -6,10 +6,14 @@ import { AppModule } from './app.module.js';
 import type { Env } from './config/env.js';
 
 /** Arma la aplicación con la misma configuración en producción y en las pruebas. */
-export async function createApp(env: Pick<Env, 'CORS_ORIGIN'>): Promise<NestFastifyApplication> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
-    logger: ['error', 'warn', 'log'],
-  });
+export async function createApp(
+  env: Pick<Env, 'CORS_ORIGIN'> & Partial<Pick<Env, 'TRUST_PROXY'>>,
+): Promise<NestFastifyApplication> {
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({ trustProxy: env.TRUST_PROXY ?? false }),
+    { logger: ['error', 'warn', 'log'] },
+  );
   return configureApp(app, env);
 }
 

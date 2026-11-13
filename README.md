@@ -52,7 +52,7 @@ docs/brand       logo e ícono
       de disponibilidad con zonas horarias.
 - [x] **Fase 2 · Reservas sin choques:** reservar, cancelar y reprogramar; la base de datos impide un turno
       doble aunque lleguen muchas reservas al mismo tiempo.
-- [ ] **Fase 3 · Cuentas y roles:** dueño, staff y cliente; Google o mail; invitaciones.
+- [x] **Fase 3 · Cuentas y roles:** dueño, staff y cliente; Google o mail; invitaciones.
 - [ ] **Fase 4 · Agenda en tiempo real:** WebSockets, una sala por negocio.
 - [ ] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`.
 - [ ] **Fase 6 · Recordatorios:** BullMQ, mail 24 h y 1 h antes, cancelar o reprogramar con un link.
@@ -95,34 +95,59 @@ Esa prueba encontró un problema real: con horarios distintos que se pisan, Post
 profesional (`pg_advisory_xact_lock`): las reservas del mismo profesional se ponen en fila y la segunda recibe
 un 409 limpio. La restricción sigue siendo la garantía; el candado solo evita el bloqueo mutuo.
 
+## Cuentas y seguridad
+
+- **Inicio de sesión** con email y contraseña o con Google. Las contraseñas se guardan con scrypt (incluido en
+  Node, sin dependencias nativas). Con Google se verifica la firma, el emisor y la audiencia del ID token.
+- **Sesiones** en una cookie `HttpOnly` y `SameSite=Lax` (y `Secure` en producción) que JavaScript no puede leer.
+  Las apps nativas reciben el token y lo mandan como `Authorization: Bearer`. En la base se guarda solo el hash
+  SHA-256 del token: quien lea la base no puede usar las sesiones.
+- **CSRF:** un pedido que modifica algo con la cookie de sesión tiene que venir de un origen permitido
+  (`CORS_ORIGIN`). Con `Bearer` no hace falta, porque el navegador nunca lo agrega solo.
+- **Adivinación de contraseñas:** 5 intentos fallidos por email o 50 por IP bloquean por 15 minutos (contados en
+  Redis). El error es el mismo si el email no existe o si la contraseña está mal, y tarda lo mismo.
+- **Cuentas tomadas de antemano:** si alguien registra una cuenta con un email ajeno y después la dueña real entra
+  con Google, la cuenta pasa a ser de ella: se borra la contraseña y se cierran las sesiones anteriores.
+- **Roles por negocio:** quien crea un negocio queda como dueña. El staff entra por invitación y gestiona
+  turnos, pero no el catálogo ni el equipo. Todo exige sesión salvo lo que usa la página pública: catálogo,
+  disponibilidad y reservas.
+- **Invitaciones:** el link solo lo puede aceptar la cuenta del email invitado, sirve una vez y vence a los 7
+  días. Hasta la fase 6 el link se devuelve en la respuesta; después viaja por mail.
+
 ## API
 
-Los endpoints de gestión todavía no piden sesión: las cuentas y los permisos llegan en la fase 3.
+Columna "Quién": 🌐 sin sesión, 👤 con sesión, 🛠 staff o dueña del negocio, 👑 solo dueña.
 
-| Método        | Ruta                                             | Qué hace                                          |
-| ------------- | ------------------------------------------------ | ------------------------------------------------- |
-| `GET`         | `/health`                                        | estado de la API, la base de datos y Redis        |
-| `POST`        | `/businesses`                                    | crea un negocio                                   |
-| `GET`         | `/businesses/by-slug/:slug`                      | busca un negocio por su dirección                 |
-| `GET` `PATCH` | `/businesses/:id`                                | consulta o modifica un negocio                    |
-| `GET` `POST`  | `/businesses/:id/locations`                      | sucursales                                        |
-| `PATCH`       | `/businesses/:id/locations/:locationId`          | modifica o da de baja una sucursal                |
-| `GET` `POST`  | `/businesses/:id/services`                       | servicios                                         |
-| `PATCH`       | `/businesses/:id/services/:serviceId`            | modifica o da de baja un servicio                 |
-| `GET` `POST`  | `/businesses/:id/staff`                          | profesionales                                     |
-| `GET` `PATCH` | `/businesses/:id/staff/:staffId`                 | consulta, modifica o da de baja un profesional    |
-| `PUT`         | `/businesses/:id/staff/:staffId/services`        | servicios que hace un profesional                 |
-| `GET` `PUT`   | `/businesses/:id/staff/:staffId/schedule`        | horario semanal en una sucursal                   |
-| `GET` `POST`  | `/businesses/:id/closures`                       | feriados, vacaciones y otros cierres              |
-| `DELETE`      | `/businesses/:id/closures/:closureId`            | borra un cierre                                   |
-| `GET`         | `/businesses/:id/availability?serviceId&from&to` | turnos libres (opcional: `staffId`, `locationId`) |
-| `GET` `POST`  | `/businesses/:id/bookings`                       | lista o reserva turnos                            |
-| `GET`         | `/businesses/:id/bookings/:bookingId`            | consulta un turno                                 |
-| `POST`        | `/businesses/:id/bookings/:bookingId/cancel`     | cancela un turno y libera el horario              |
-| `POST`        | `/businesses/:id/bookings/:bookingId/reschedule` | mueve un turno de horario, profesional o sucursal |
+| Método                  | Ruta                                               | Quién  | Qué hace                                          |
+| ----------------------- | -------------------------------------------------- | ------ | ------------------------------------------------- |
+| `GET`                   | `/health`                                          | 🌐     | estado de la API, la base de datos y Redis        |
+| `POST`                  | `/auth/register` · `/auth/login` · `/auth/google`  | 🌐     | crea la cuenta o inicia sesión                    |
+| `POST`                  | `/auth/logout`                                     | 🌐     | cierra la sesión                                  |
+| `GET`                   | `/auth/me`                                         | 👤     | la persona y los negocios que administra          |
+| `POST`                  | `/businesses`                                      | 👤     | crea un negocio y deja a quien lo crea como dueña |
+| `GET`                   | `/businesses/by-slug/:slug` · `/businesses/:id`    | 🌐     | datos públicos de un negocio                      |
+| `PATCH`                 | `/businesses/:id`                                  | 👑     | modifica un negocio                               |
+| `GET`                   | `/businesses/:id/locations` · `services` · `staff` | 🌐     | catálogo para la página de reservas               |
+| `POST` `PATCH`          | `/businesses/:id/locations` · `services` · `staff` | 👑     | carga y modifica el catálogo                      |
+| `GET`                   | `/businesses/:id/staff/:staffId`                   | 🛠      | un profesional                                    |
+| `PUT`                   | `/businesses/:id/staff/:staffId/services`          | 👑     | servicios que hace un profesional                 |
+| `GET` · `PUT`           | `/businesses/:id/staff/:staffId/schedule`          | 🛠 · 👑 | horario semanal en una sucursal                   |
+| `GET` · `POST` `DELETE` | `/businesses/:id/closures`                         | 🛠 · 👑 | feriados, vacaciones y otros cierres              |
+| `GET`                   | `/businesses/:id/availability?serviceId&from&to`   | 🌐     | turnos libres (opcional: `staffId`, `locationId`) |
+| `POST`                  | `/businesses/:id/bookings`                         | 🌐     | reserva un turno (con sesión, queda en su cuenta) |
+| `GET`                   | `/businesses/:id/bookings` · `/:bookingId`         | 🛠      | turnos del negocio                                |
+| `POST`                  | `/businesses/:id/bookings/:bookingId/cancel`       | 🛠      | cancela un turno y libera el horario              |
+| `POST`                  | `/businesses/:id/bookings/:bookingId/reschedule`   | 🛠      | mueve un turno de horario, profesional o sucursal |
+| `GET`                   | `/businesses/:id/members`                          | 🛠      | el equipo                                         |
+| `DELETE`                | `/businesses/:id/members/:userId`                  | 👑     | saca a alguien del equipo                         |
+| `GET` `POST` `DELETE`   | `/businesses/:id/invitations`                      | 👑     | invitaciones pendientes                           |
+| `GET`                   | `/invitations/:token`                              | 🌐     | qué negocio invita y a qué email                  |
+| `POST`                  | `/invitations/:token/accept`                       | 👤     | acepta la invitación                              |
+| `GET`                   | `/me/bookings`                                     | 👤     | mis turnos en cualquier negocio                   |
+| `POST`                  | `/me/bookings/:bookingId/cancel`                   | 👤     | cancela un turno propio                           |
 
-Los errores de validación responden 400 con el campo y el motivo de cada problema. Un horario tomado o no
-ofrecido, o un turno que ya pasó o ya está cancelado, responde 409.
+Los errores de validación responden 400 con el campo y el motivo de cada problema. Sin sesión, 401; sin el rol
+necesario, 403. Un horario tomado o no ofrecido, o un turno que ya pasó o ya está cancelado, responde 409.
 
 ## Correr el proyecto
 
@@ -132,7 +157,7 @@ Requisitos: Node 22.12 o superior, pnpm 10 y Docker.
 pnpm install
 pnpm db:up                                # PostgreSQL y Redis
 cp apps/api/.env.example apps/api/.env
-pnpm build && pnpm db:seed                # negocio de ejemplo: peluqueria-demo
+pnpm build && pnpm db:seed                # negocio de ejemplo; dueña: demo@booklet.local / demo-booklet
 pnpm dev                                  # API en :3000 y web en :5173
 ```
 

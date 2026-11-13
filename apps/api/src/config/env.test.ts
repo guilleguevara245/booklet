@@ -24,4 +24,10 @@ describe('loadEnv', () => {
   it('trata GOOGLE_CLIENT_ID vacío como no configurado', () => {
     expect(loadEnv({ ...valid, GOOGLE_CLIENT_ID: '' }).GOOGLE_CLIENT_ID).toBeUndefined();
   });
+
+  it('lee TRUST_PROXY como booleano y lo deja apagado por defecto', () => {
+    expect(loadEnv(valid).TRUST_PROXY).toBe(false);
+    expect(loadEnv({ ...valid, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+    expect(() => loadEnv({ ...valid, TRUST_PROXY: 'quizás' })).toThrow(/TRUST_PROXY/);
+  });
 });
