@@ -24,7 +24,7 @@ describe('inicio de sesión', () => {
     await userEvent.type(screen.getByLabelText('Contraseña'), 'contraseña segura');
     await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/panel'));
-    expect(await screen.findByText('Hola, Ana')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Creá tu negocio' })).toBeInTheDocument();
   });
 
   it('muestra el error si la contraseña está mal', async () => {
