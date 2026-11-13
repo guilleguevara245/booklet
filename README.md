@@ -24,6 +24,10 @@ salen solos.
 
 > En construcción. Este README crece con cada fase.
 
+<p align="center">
+  <img src="docs/screenshots/agenda-en-vivo.png" alt="Agenda del día de la Peluquería Demo, con una columna por profesional y el aviso de un turno nuevo que llegó en vivo" width="820">
+</p>
+
 ## Stack
 
 Monorepo TypeScript de punta a punta, con tipos y validaciones compartidos entre el servidor y los clientes.
@@ -42,6 +46,7 @@ Monorepo TypeScript de punta a punta, con tipos y validaciones compartidos entre
 apps/api         API (NestJS)
 apps/web         panel del negocio y página pública de reservas (React)
 packages/shared  esquemas Zod y tipos compartidos
+e2e              pruebas de punta a punta (Playwright)
 docs/brand       logo e ícono
 ```
 
@@ -53,7 +58,8 @@ docs/brand       logo e ícono
 - [x] **Fase 2 · Reservas sin choques:** reservar, cancelar y reprogramar; la base de datos impide un turno
       doble aunque lleguen muchas reservas al mismo tiempo.
 - [x] **Fase 3 · Cuentas y roles:** dueño, staff y cliente; Google o mail; invitaciones.
-- [ ] **Fase 4 · Agenda en tiempo real:** WebSockets, una sala por negocio.
+- [x] **Fase 4 · Agenda en tiempo real:** panel web con la agenda del día, WebSockets con una sala por negocio,
+      cancelar y reprogramar desde el panel.
 - [ ] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`.
 - [ ] **Fase 6 · Recordatorios:** BullMQ, mail 24 h y 1 h antes, cancelar o reprogramar con un link.
 - [ ] **Fase 7 · Pagos:** seña con Mercado Pago, webhooks idempotentes, reembolsos.
@@ -94,6 +100,26 @@ Esa prueba encontró un problema real: con horarios distintos que se pisan, Post
 `deadlock detected` (un error 500). Ahora, antes de guardar, cada reserva toma un candado sobre la agenda de ese
 profesional (`pg_advisory_xact_lock`): las reservas del mismo profesional se ponen en fila y la segunda recibe
 un 409 limpio. La restricción sigue siendo la garantía; el candado solo evita el bloqueo mutuo.
+
+## Panel en tiempo real
+
+La agenda del día muestra una columna por profesional, en la zona horaria de la sucursal. Cuando entra, se
+cancela o se mueve un turno, todos los paneles abiertos de ese negocio se actualizan solos, sin recargar, y
+avisan qué cambió (también a lectores de pantalla).
+
+- **Socket.IO** con una sala por negocio. Al conectar se valida la sesión con las mismas reglas que HTTP:
+  cookie desde la web de Booklet o token en `auth.token` para las apps nativas. Para entrar a la sala de un
+  negocio hay que ser dueña o staff.
+- **Varias instancias:** con el adaptador de Redis, un aviso emitido en una instancia de la API llega a los paneles
+  conectados a cualquier otra. Hay una prueba que levanta dos instancias y lo verifica.
+- **Sin avisos perdidos:** al reconectar, el panel vuelve a pedir los turnos del día.
+- **Cancelar y reprogramar** desde el detalle del turno. Al reprogramar se ofrecen los horarios libres de ese
+  día con cualquier profesional que haga el servicio; el horario actual del turno cuenta como libre.
+
+<p align="center">
+  <img src="docs/screenshots/reprogramar.png" alt="Diálogo para reprogramar un turno, con los horarios libres agrupados por profesional" width="560">
+  <img src="docs/screenshots/agenda-celular.png" alt="La agenda en un celular" width="200">
+</p>
 
 ## Cuentas y seguridad
 
@@ -151,7 +177,7 @@ necesario, 403. Un horario tomado o no ofrecido, o un turno que ya pasó o ya es
 
 ## Correr el proyecto
 
-Requisitos: Node 22.12 o superior, pnpm 10 y Docker.
+Requisitos: Node 22.22 o superior, pnpm 10 y Docker.
 
 ```bash
 pnpm install
@@ -161,12 +187,14 @@ pnpm build && pnpm db:seed                # negocio de ejemplo; dueña: demo@boo
 pnpm dev                                  # API en :3000 y web en :5173
 ```
 
-La web muestra el estado de la API, que consulta `GET /health`: responde 200 si la base de datos y Redis
+Entrá a <http://localhost:5173/entrar> con la dueña de ejemplo para ver el panel. La portada muestra el estado de
+la API, que consulta `GET /health`: responde 200 si la base de datos y Redis
 contestan, y 503 con el detalle si alguno está caído. La API aplica las migraciones pendientes al arrancar.
 
 | Comando                        | Qué hace                                                                                        |
 | ------------------------------ | ----------------------------------------------------------------------------------------------- |
 | `pnpm dev`                     | levanta todo en modo desarrollo                                                                 |
+| `pnpm e2e`                     | compila y corre las pruebas de punta a punta con Playwright (necesita `pnpm db:up`)             |
 | `pnpm test`                    | corre las pruebas (las de integración necesitan `pnpm db:up` y las variables de `.env.example`) |
 | `pnpm lint` / `pnpm typecheck` | revisa estilo y tipos                                                                           |
 | `pnpm build`                   | compila todo                                                                                    |

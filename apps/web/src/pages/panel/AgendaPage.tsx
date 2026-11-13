@@ -275,9 +275,9 @@ function DayGrid({
                         <button
                           type="button"
                           onClick={() => onSelect(b.id)}
-                          className={`size-full overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-left text-sm transition-shadow hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand dark:bg-violet-500/20 dark:hover:bg-violet-500/30 ${b.id === highlighted ? 'ring-2 ring-brand ring-offset-1 motion-safe:animate-pulse' : ''}`}
+                          className={`flex size-full flex-col items-start justify-start overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-left text-sm transition-shadow hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand dark:bg-violet-500/20 dark:hover:bg-violet-500/30 ${b.id === highlighted ? 'ring-2 ring-brand ring-offset-2 dark:ring-offset-night' : ''}`}
                         >
-                          <span className={`block ${compact ? 'truncate' : ''}`}>
+                          <span className={`block max-w-full ${compact ? 'truncate' : ''}`}>
                             <span className="font-medium">
                               <time dateTime={b.startsAt}>
                                 {local(b.startsAt).toFormat('HH:mm')}

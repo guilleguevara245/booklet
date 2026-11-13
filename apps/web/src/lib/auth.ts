@@ -20,12 +20,16 @@ export function useMe() {
   });
 }
 
-/** Inicia sesión o registra, y vuelve a pedir `/auth/me` para tener los negocios. */
+/**
+ * Inicia sesión o registra, y vuelve a pedir `/auth/me` para tener los negocios. Se espera
+ * esa respuesta antes de seguir: si no, el panel vería todavía "sin sesión" y mandaría de
+ * vuelta a /entrar.
+ */
 function useStartSession<T>(path: string) {
   const queryClient = useQueryClient();
   return useMutation<AuthResponse, ApiError, T>({
     mutationFn: (body) => api<AuthResponse>('POST', path, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: meKey }),
+    onSuccess: () => queryClient.refetchQueries({ queryKey: meKey, type: 'all' }),
   });
 }
 

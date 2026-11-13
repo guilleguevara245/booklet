@@ -70,3 +70,30 @@ describe('rutas protegidas', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/entrar'));
   });
 });
+
+describe('después de visitar la portada sin sesión', () => {
+  it('registrarse lleva al panel y no rebota a /entrar', async () => {
+    let registered = false;
+    mockApi({
+      'GET /auth/me': () =>
+        registered
+          ? { status: 200, body: { user: ana, memberships: [] } }
+          : { status: 401, body: {} },
+      'POST /auth/register': () => {
+        registered = true;
+        return { status: 201, body: { user: ana } };
+      },
+      'GET /health': { status: 503, body: {} },
+    });
+    const { router } = renderApp('/');
+    // La portada ya guardó "sin sesión" en el caché.
+    await screen.findByRole('link', { name: 'Crear cuenta' });
+    await router.navigate('/registro');
+    await userEvent.type(await screen.findByLabelText('Nombre'), 'Ana');
+    await userEvent.type(screen.getByLabelText('Email'), 'ana@example.com');
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'contraseña segura');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+    expect(await screen.findByRole('heading', { name: 'Creá tu negocio' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel');
+  });
+});
