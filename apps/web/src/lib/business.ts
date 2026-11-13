@@ -29,8 +29,19 @@ export function useBusiness(id: string) {
   });
 }
 
+/** Negocio por su dirección pública, para la página de reservas. */
+export function usePublicBusiness(slug: string) {
+  return useQuery({
+    queryKey: ['public-business', slug],
+    queryFn: ({ signal }) =>
+      api<Business>('GET', `/businesses/by-slug/${encodeURIComponent(slug)}`, undefined, signal),
+    retry: (count, err) => (err as ApiError).status !== 404 && count < 2,
+  });
+}
+
 export function useLocations(id: string) {
   return useQuery({
+    enabled: id !== '',
     queryKey: [...businessKeys.all(id), 'locations'],
     queryFn: ({ signal }) =>
       api<Location[]>('GET', `/businesses/${id}/locations`, undefined, signal),
@@ -39,6 +50,7 @@ export function useLocations(id: string) {
 
 export function useStaff(id: string) {
   return useQuery({
+    enabled: id !== '',
     queryKey: [...businessKeys.all(id), 'staff'],
     queryFn: ({ signal }) => api<Staff[]>('GET', `/businesses/${id}/staff`, undefined, signal),
   });
@@ -46,6 +58,7 @@ export function useStaff(id: string) {
 
 export function useServices(id: string) {
   return useQuery({
+    enabled: id !== '',
     queryKey: [...businessKeys.all(id), 'services'],
     queryFn: ({ signal }) => api<Service[]>('GET', `/businesses/${id}/services`, undefined, signal),
   });
