@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Logo } from '../../components/Logo';
+import { VerifyEmailBanner } from '../../components/VerifyEmailBanner';
 import { Button } from '../../components/ui';
 import { useLogout, useMe } from '../../lib/auth';
 
@@ -25,6 +26,7 @@ export function PanelLayout({ children }: { children: ReactNode }) {
           </Button>
         </div>
       </header>
+      <VerifyEmailBanner />
       {children}
     </div>
   );

@@ -112,3 +112,17 @@ export function useManageAction(token: string) {
     onSuccess: (booking) => queryClient.setQueryData(manageKey(token), booking),
   });
 }
+
+export function useVerifyEmail() {
+  const queryClient = useQueryClient();
+  return useMutation<{ user: MeResponse['user'] }, ApiError, string>({
+    mutationFn: (token) => api('POST', '/auth/verify-email', { token }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: meKey }),
+  });
+}
+
+export function useResendVerification() {
+  return useMutation<void, ApiError>({
+    mutationFn: () => api<void>('POST', '/auth/resend-verification'),
+  });
+}

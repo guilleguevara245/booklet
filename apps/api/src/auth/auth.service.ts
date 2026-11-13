@@ -5,10 +5,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { GoogleLogin, Login, Register, User } from '@booklet/shared';
+export { toUser } from './to-user.js';
 import { eq } from 'drizzle-orm';
 import { rethrowUnique } from '../common/db-errors.js';
 import { DB, type Database } from '../database/database.module.js';
 import { sessions, users } from '../database/schema.js';
+import { EmailVerificationService } from './email-verification.service.js';
+import { toUser } from './to-user.js';
 import { GOOGLE_VERIFIER, type GoogleIdentity, type GoogleVerifier } from './google-verifier.js';
 import { dummyHash, hashPassword, verifyPassword } from './password.js';
 import { LoginRateLimiter } from './rate-limit.service.js';
@@ -17,15 +20,6 @@ import { SessionsService } from './sessions.service.js';
 export const BAD_CREDENTIALS = 'Email o contraseña incorrectos.';
 export const EMAIL_TAKEN = 'Ya hay una cuenta con ese email.';
 export const GOOGLE_INVALID = 'No pudimos verificar tu cuenta de Google.';
-
-export const toUser = (r: typeof users.$inferSelect): User => ({
-  id: r.id,
-  email: r.email,
-  name: r.name,
-  emailVerified: r.emailVerified,
-  hasPassword: r.passwordHash !== null,
-  hasGoogle: r.googleSub !== null,
-});
 
 export interface ClientInfo {
   ip: string;
@@ -39,6 +33,7 @@ export class AuthService {
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(LoginRateLimiter) private readonly limiter: LoginRateLimiter,
     @Inject(GOOGLE_VERIFIER) private readonly google: GoogleVerifier | null,
+    @Inject(EmailVerificationService) private readonly verification: EmailVerificationService,
   ) {}
 
   async register(input: Register, client: ClientInfo): Promise<{ user: User; token: string }> {
@@ -52,6 +47,7 @@ export class AuthService {
     } catch (err) {
       rethrowUnique(err, EMAIL_TAKEN);
     }
+    await this.verification.send(row);
     const token = await this.sessions.create(row.id, client.userAgent);
     return { user: toUser(row), token };
   }

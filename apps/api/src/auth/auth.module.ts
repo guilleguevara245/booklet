@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { ENV, type Env } from '../config/env.js';
 import { GOOGLE_VERIFIER, JoseGoogleVerifier } from './google-verifier.js';
 import { LoginRateLimiter } from './rate-limit.service.js';
@@ -13,6 +14,7 @@ import { SessionsService } from './sessions.service.js';
   controllers: [AuthController],
   providers: [
     AuthService,
+    EmailVerificationService,
     SessionsService,
     LoginRateLimiter,
     { provide: APP_GUARD, useClass: SessionGuard },

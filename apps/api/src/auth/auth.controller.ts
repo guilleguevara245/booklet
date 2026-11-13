@@ -11,12 +11,15 @@ import {
   type MeResponse,
   type Register,
   type User,
+  type VerifyEmail,
+  verifyEmailSchema,
 } from '@booklet/shared';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ENV, type Env } from '../config/env.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { AuthService, toUser } from './auth.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { CurrentUser, Public } from './request-user.js';
 import { SESSION_DAYS, type SessionUser } from './sessions.service.js';
 
@@ -25,6 +28,7 @@ export class AuthController {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(BusinessesService) private readonly businesses: BusinessesService,
+    @Inject(EmailVerificationService) private readonly verification: EmailVerificationService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -73,6 +77,20 @@ export class AuthController {
   ): Promise<void> {
     if (req.sessionToken) await this.auth.logout(req.sessionToken.value);
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
+  }
+
+  /** El link del mail de verificación llega acá (la web lo manda al abrir /verificar). */
+  @Post('verify-email')
+  @Public()
+  @HttpCode(200)
+  verifyEmail(@Body(new ZodPipe(verifyEmailSchema)) body: VerifyEmail): Promise<{ user: User }> {
+    return this.verification.verify(body.token).then((user) => ({ user }));
+  }
+
+  @Post('resend-verification')
+  @HttpCode(204)
+  resendVerification(@CurrentUser() user: SessionUser): Promise<void> {
+    return this.verification.resend(user);
   }
 
   @Get('me')

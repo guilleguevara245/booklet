@@ -68,3 +68,6 @@ export interface MeResponse {
   user: User;
   memberships: Membership[];
 }
+
+export const verifyEmailSchema = z.object({ token: z.string().min(20).max(1000) });
+export type VerifyEmail = z.infer<typeof verifyEmailSchema>;

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { Logo } from '../../components/Logo';
+import { VerifyEmailBanner } from '../../components/VerifyEmailBanner';
 import { useLogout, useMe } from '../../lib/auth';
 
 const navLink =
@@ -42,6 +43,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           </nav>
         </div>
       </header>
+      <VerifyEmailBanner />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:py-10">{children}</main>
       <footer className="py-6 text-center text-xs text-muted dark:text-slate-300">
         Reservas con{' '}
