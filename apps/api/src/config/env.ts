@@ -12,6 +12,15 @@ const envSchema = z.object({
    * intentos por IP los cuenta juntos. No activarlo sin proxy: cualquiera podría inventar su IP.
    */
   TRUST_PROXY: z.stringbool().default(false),
+  /** Dirección de la web: los links de los mails apuntan acá. */
+  WEB_URL: z.url().default('http://localhost:5173'),
+  /**
+   * Cómo se mandan los mails: `smtp` (en desarrollo, a Mailpit; en producción, al proveedor),
+   * `memory` (las pruebas los leen de una bandeja en memoria) o `log` (solo los anota).
+   */
+  MAIL_TRANSPORT: z.enum(['smtp', 'memory', 'log']).default('smtp'),
+  SMTP_URL: z.url().default('smtp://localhost:1025'),
+  MAIL_FROM: z.string().default('Booklet <no-responder@booklet.local>'),
   /** ID de cliente OAuth de Google. Sin él, el inicio con Google responde 503. */
   GOOGLE_CLIENT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 });

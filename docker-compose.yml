@@ -1,4 +1,4 @@
-# Servicios locales para desarrollo: PostgreSQL y Redis.
+# Servicios locales para desarrollo: PostgreSQL, Redis y Mailpit.
 # Uso: pnpm db:up
 services:
   postgres:
@@ -26,6 +26,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Atrapa los mails que manda la API en desarrollo: se ven en http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - '1025:1025'
+      - '8025:8025'
 
 volumes:
   postgres-data:

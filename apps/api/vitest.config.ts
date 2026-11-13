@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     globalSetup: ['./test/global-setup.ts'],
     // Carga apps/api/.env para las pruebas de integración contra PostgreSQL y Redis.
-    env: loadEnv('test', process.cwd(), ''),
+    // Los mails de las pruebas van a una bandeja en memoria.
+    env: { ...loadEnv('test', process.cwd(), ''), MAIL_TRANSPORT: 'memory' },
   },
 });
