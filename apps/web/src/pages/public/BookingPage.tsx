@@ -1,10 +1,13 @@
 import type { Location, Service } from '@booklet/shared';
-import { type ReactNode, useId } from 'react';
+import { useCallback, useId } from 'react';
+import { DateTime } from 'luxon';
 import { useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
-import { useLocations, usePublicBusiness, useServices } from '../../lib/business';
+import { useLocations, usePublicBusiness, useServices, useStaff } from '../../lib/business';
 import { formatDuration, formatPrice } from '../../lib/format';
+import { OptionCard, Step } from '../../components/options';
 import { PublicLayout } from './PublicLayout';
+import { ANY, type SlotChoice, SlotPicker } from './SlotPicker';
 
 /**
  * Página pública de reservas: `/n/:slug`. El estado de cada paso vive en la URL
@@ -17,6 +20,7 @@ export function BookingPage() {
   const id = business.data?.id ?? '';
   const locations = useLocations(id);
   const services = useServices(id);
+  const staff = useStaff(id);
 
   const activeLocations = (locations.data ?? []).filter((l) => l.active);
   const activeServices = (services.data ?? []).filter((s) => s.active);
@@ -24,14 +28,48 @@ export function BookingPage() {
     activeLocations.find((l) => l.id === params.get('sucursal')) ?? activeLocations[0];
   const service = activeServices.find((s) => s.id === params.get('servicio'));
 
-  const update = (changes: Record<string, string | null>) => {
-    const next = new URLSearchParams(params);
-    for (const [key, value] of Object.entries(changes)) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    setParams(next, { replace: true });
+  const update = useCallback(
+    (changes: Record<string, string | null>) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [key, value] of Object.entries(changes)) {
+            if (value) next.set(key, value);
+            else next.delete(key);
+          }
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  // Cada parte de la elección vive en un parámetro de la dirección.
+  const choice: SlotChoice = {
+    staff: params.get('profesional') ?? ANY,
+    from: params.get('desde'),
+    day: params.get('dia'),
+    start: params.get('hora'),
+    with: params.get('con'),
   };
+  const onChoice = useCallback(
+    (c: Partial<SlotChoice>) => {
+      const keys: Record<keyof SlotChoice, string> = {
+        staff: 'profesional',
+        from: 'desde',
+        day: 'dia',
+        start: 'hora',
+        with: 'con',
+      };
+      update(
+        Object.fromEntries(
+          Object.entries(c).map(([k, v]) => [keys[k as keyof SlotChoice], v === ANY ? null : v]),
+        ),
+      );
+    },
+    [update],
+  );
+  const chosenStaff = staff.data?.find((s) => s.id === choice.with);
 
   if (business.isError) {
     const notFound = business.error instanceof ApiError && business.error.status === 404;
@@ -71,7 +109,7 @@ export function BookingPage() {
             <LocationStep
               locations={activeLocations}
               value={location?.id}
-              onChange={(sucursal) => update({ sucursal, dia: null, hora: null })}
+              onChange={(sucursal) => update({ sucursal, dia: null, hora: null, con: null })}
             />
           )}
 
@@ -94,50 +132,32 @@ export function BookingPage() {
               Elegí un servicio para ver los horarios.
             </p>
           )}
+
+          {service && location && staff.data && (
+            <SlotPicker
+              key={`${service.id}:${location.id}`}
+              businessId={id}
+              service={service}
+              location={location}
+              staff={staff.data}
+              choice={choice}
+              onChange={onChoice}
+            />
+          )}
+
+          {service && location && choice.start && chosenStaff && (
+            <p role="status" className="rounded-xl bg-violet-50 p-4 dark:bg-violet-500/15">
+              {service.name} con {chosenStaff.name},{' '}
+              {DateTime.fromISO(choice.start)
+                .setZone(location.timezone)
+                .setLocale('es-AR')
+                .toFormat("cccc d 'de' LLLL 'a las' HH:mm")}
+              .
+            </p>
+          )}
         </div>
       )}
     </PublicLayout>
-  );
-}
-
-/** Paso de un formulario: un grupo de opciones con su título. */
-export function Step({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <fieldset className="flex flex-col gap-3">
-      <legend className="mb-3 text-lg font-bold">{title}</legend>
-      {children}
-    </fieldset>
-  );
-}
-
-/** Opción grande, con un radio real adentro: se elige con teclado y la leen los lectores. */
-export function OptionCard({
-  name,
-  value,
-  checked,
-  onChange,
-  children,
-}: {
-  name: string;
-  value: string;
-  checked: boolean;
-  onChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <label
-      className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand dark:bg-white/5 ${checked ? 'border-brand ring-1 ring-brand' : 'border-slate-200 hover:border-slate-400 dark:border-white/15'}`}
-    >
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={checked}
-        onChange={() => onChange(value)}
-        className="mt-1 size-4 accent-brand"
-      />
-      <span className="flex-1">{children}</span>
-    </label>
   );
 }
 

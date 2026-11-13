@@ -1,4 +1,5 @@
 import type {
+  AvailabilityResponse,
   AvailableSlot,
   Booking,
   Business,
@@ -141,5 +142,31 @@ export function useRescheduleBooking(businessId: string) {
         staffId,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: businessKeys.bookings(businessId) }),
+  });
+}
+
+/** Turnos libres de un servicio en un rango de días locales. */
+export function useAvailability(
+  businessId: string,
+  q: { serviceId: string; locationId: string; staffId?: string; from: string; to: string } | null,
+) {
+  return useQuery({
+    queryKey: ['availability', businessId, q],
+    enabled: q !== null && businessId !== '',
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({
+        serviceId: q!.serviceId,
+        locationId: q!.locationId,
+        from: q!.from,
+        to: q!.to,
+      });
+      if (q!.staffId) params.set('staffId', q!.staffId);
+      return api<AvailabilityResponse>(
+        'GET',
+        `/businesses/${businessId}/availability?${params}`,
+        undefined,
+        signal,
+      );
+    },
   });
 }
