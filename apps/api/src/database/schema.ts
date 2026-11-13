@@ -195,6 +195,75 @@ export const bookings = pgTable(
   ],
 );
 
+// --- Cuentas ---
+
+/**
+ * Persona con cuenta: dueño, empleado o cliente. El email se guarda en minúsculas. Puede
+ * entrar con contraseña, con Google o con las dos; `passwordHash` y `googleSub` son opcionales.
+ */
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    passwordHash: text('password_hash'),
+    googleSub: text('google_sub'),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('users_email_key').on(t.email),
+    uniqueIndex('users_google_sub_key').on(t.googleSub),
+    check('users_email_lower_check', sql`${t.email} = lower(${t.email})`),
+  ],
+);
+
+/**
+ * Sesión iniciada. Se guarda el hash SHA-256 del token, nunca el token: si alguien lee la
+ * base, no puede usar las sesiones.
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('sessions_token_hash_key').on(t.tokenHash),
+    index('sessions_user_idx').on(t.userId),
+  ],
+);
+
+/** Rol de una persona dentro de un negocio. */
+export const memberRole = pgEnum('member_role', ['owner', 'staff']);
+
+/** Quién puede administrar cada negocio y con qué rol. */
+export const memberships = pgTable(
+  'memberships',
+  {
+    businessId: uuid('business_id')
+      .notNull()
+      .references(() => businesses.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: memberRole('role').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.businessId, t.userId] }),
+    index('memberships_user_idx').on(t.userId),
+  ],
+);
+
 // --- Relaciones (para las consultas con `with` de Drizzle) ---
 
 export const staffRelations = relations(staff, ({ many }) => ({
