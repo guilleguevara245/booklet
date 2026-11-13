@@ -11,6 +11,8 @@ export default defineConfig({
         target: 'http://localhost:3000',
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      // Avisos en tiempo real (Socket.IO) de la API local.
+      '/socket.io': { target: 'http://localhost:3000', ws: true },
     },
   },
   test: {

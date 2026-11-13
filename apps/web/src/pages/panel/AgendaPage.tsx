@@ -1,6 +1,6 @@
 import type { Booking, Service, Staff } from '@booklet/shared';
 import { DateTime } from 'luxon';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
   dayRange,
@@ -10,6 +10,7 @@ import {
   useServices,
   useStaff,
 } from '../../lib/business';
+import { type LiveNotice, type LiveStatus, useBusinessLive } from '../../lib/realtime';
 import { PanelLayout } from './PanelLayout';
 
 const PX_PER_MINUTE = 1.2; // una hora = 72 px
@@ -37,6 +38,8 @@ export function AgendaPage() {
   const date = params.get('fecha') ?? today;
   const range = useMemo(() => dayRange(date, timezone), [date, timezone]);
   const bookings = useDayBookings(businessId, location ? range : null);
+  const live = useBusinessLive(businessId);
+  const highlighted = useHighlight(live.notice);
 
   const go = (next: string | null, sucursal = location?.id) => {
     const p = new URLSearchParams();
@@ -58,7 +61,10 @@ export function AgendaPage() {
       <main className="flex flex-col gap-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">{business.data?.name ?? 'Agenda'}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold">{business.data?.name ?? 'Agenda'}</h1>
+              <LiveBadge status={live.status} />
+            </div>
             <p className="text-muted first-letter:uppercase dark:text-slate-300">{label}</p>
           </div>
           <nav aria-label="Elegir día" className="flex flex-wrap items-center gap-2">
@@ -131,8 +137,10 @@ export function AgendaPage() {
             timezone={timezone}
             serviceNames={serviceNames}
             loading={bookings.isPending || staff.isPending}
+            highlighted={highlighted}
           />
         )}
+        <Announcer notice={live.notice} timezone={timezone} />
         <p className="text-sm text-muted dark:text-slate-300">
           <Link to="/panel" className="underline">
             Cambiar de negocio
@@ -157,9 +165,10 @@ interface GridProps {
   timezone: string;
   serviceNames: Map<string, string>;
   loading: boolean;
+  highlighted: string | null;
 }
 
-function DayGrid({ columns, bookings, timezone, serviceNames, loading }: GridProps) {
+function DayGrid({ columns, bookings, timezone, serviceNames, loading, highlighted }: GridProps) {
   const local = (iso: string) => DateTime.fromISO(iso).setZone(timezone);
   // El rango visible se agranda si hay turnos fuera del horario habitual.
   const startHour = Math.min(DEFAULT_START_HOUR, ...bookings.map((b) => local(b.startsAt).hour));
@@ -235,7 +244,7 @@ function DayGrid({ columns, bookings, timezone, serviceNames, loading }: GridPro
                     return (
                       <li
                         key={b.id}
-                        className="absolute inset-x-1 overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-sm dark:bg-violet-500/20"
+                        className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-4 border-brand bg-violet-50 px-2 py-1 text-sm transition-shadow dark:bg-violet-500/20 ${b.id === highlighted ? 'ring-2 ring-brand ring-offset-1 motion-safe:animate-pulse' : ''}`}
                         style={{ top, height: Math.max(h - 2, 28) }}
                       >
                         <p className={compact ? 'truncate' : 'font-medium'}>
@@ -262,4 +271,70 @@ function DayGrid({ columns, bookings, timezone, serviceNames, loading }: GridPro
       </div>
     </div>
   );
+}
+
+const STATUS_TEXT: Record<LiveStatus, string> = {
+  live: 'En vivo',
+  connecting: 'Conectando…',
+  offline: 'Sin conexión en vivo',
+};
+
+/** Indica si la agenda se está actualizando sola. */
+function LiveBadge({ status }: { status: LiveStatus }) {
+  const dot = { live: 'bg-emerald-600', connecting: 'bg-amber-500', offline: 'bg-slate-400' }[
+    status
+  ];
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-0.5 text-xs font-medium dark:border-white/15">
+      <span aria-hidden="true" className={`size-2 rounded-full ${dot}`} />
+      {STATUS_TEXT[status]}
+    </span>
+  );
+}
+
+const NOTICE_TEXT: Record<LiveNotice['type'], string> = {
+  'booking.created': 'Nuevo turno',
+  'booking.cancelled': 'Turno cancelado',
+  'booking.rescheduled': 'Turno reprogramado',
+};
+
+/** Anuncia cada cambio a los lectores de pantalla y lo muestra unos segundos. */
+function Announcer({ notice, timezone }: { notice: LiveNotice | null; timezone: string }) {
+  const [visible, setVisible] = useState<LiveNotice | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    setVisible(notice);
+    const timer = setTimeout(() => setVisible(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  const when = visible
+    ? DateTime.fromISO(visible.booking.startsAt)
+        .setZone(timezone)
+        .setLocale('es-AR')
+        .toFormat("ccc d 'a las' HH:mm")
+    : '';
+  return (
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 bottom-4 flex justify-center px-4"
+    >
+      {visible && (
+        <p className="rounded-xl bg-ink px-4 py-3 text-sm text-white shadow-lg dark:bg-white dark:text-ink">
+          {NOTICE_TEXT[visible.type]}: {visible.booking.customer.name}, {when}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Resalta por unos segundos el turno que acaba de llegar o moverse. */
+function useHighlight(notice: LiveNotice | null): string | null {
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice || notice.type === 'booking.cancelled') return;
+    setId(notice.booking.id);
+    const timer = setTimeout(() => setId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  return id;
 }

@@ -147,3 +147,31 @@ describe('slugify', () => {
     expect(slugify('  Café & Té — Ñuñoa  ')).toBe('cafe-te-nunoa');
   });
 });
+
+describe('agenda en vivo', () => {
+  it('se suma al negocio, muestra "En vivo" y se actualiza cuando llega un turno nuevo', async () => {
+    const { fakeSocket } = await import('../../test/fake-socket');
+    let current: unknown[] = [];
+    const fetchMock = mockBusiness();
+    // La lista de turnos devuelve lo que haya en `current` en cada pedido.
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).includes('/bookings?')) {
+        return new Response(JSON.stringify(current), { status: 200 });
+      }
+      return original(input, init);
+    });
+
+    renderApp(`/panel/${BIZ}?fecha=2030-01-07`);
+    expect(await screen.findByText('En vivo')).toBeInTheDocument();
+    expect(fakeSocket.current.joined).toEqual([BIZ]);
+    expect(screen.queryByText(/Juana Pérez/)).not.toBeInTheDocument();
+
+    current = [booking];
+    fakeSocket.current.push('booking.created', booking);
+
+    const mia = screen.getByRole('region', { name: 'Turnos de Mia' });
+    expect(await within(mia).findByText(/Juana Pérez/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nuevo turno: Juana Pérez/)).toBeInTheDocument();
+  });
+});
