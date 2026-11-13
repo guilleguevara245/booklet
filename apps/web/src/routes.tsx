@@ -1,5 +1,6 @@
 import type { RouteObject } from 'react-router';
 import { HomePage } from './pages/HomePage';
+import { InvitationPage } from './pages/InvitationPage';
 import { LoginPage } from './pages/LoginPage';
 import { AgendaPage } from './pages/panel/AgendaPage';
 import { PanelHome } from './pages/panel/PanelHome';
@@ -17,6 +18,7 @@ export const routes: RouteObject[] = [
   { path: '/verificar', element: <VerifyEmailPage /> },
   { path: '/n/:slug', element: <BookingPage /> },
   { path: '/turno/:token', element: <ManageBookingPage /> },
+  { path: '/invitacion/:token', element: <InvitationPage /> },
   {
     path: '/mis-turnos',
     element: (

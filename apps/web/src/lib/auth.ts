@@ -2,8 +2,10 @@ import type {
   AuthResponse,
   AvailableSlot,
   Booking,
+  InvitationPreview,
   Login,
   MeResponse,
+  Membership,
   MyBooking,
   Register,
 } from '@booklet/shared';
@@ -124,5 +126,29 @@ export function useVerifyEmail() {
 export function useResendVerification() {
   return useMutation<void, ApiError>({
     mutationFn: () => api<void>('POST', '/auth/resend-verification'),
+  });
+}
+
+export const invitationKey = (token: string) => ['invitation', token] as const;
+
+export function useInvitation(token: string) {
+  return useQuery<InvitationPreview, ApiError>({
+    queryKey: invitationKey(token),
+    queryFn: ({ signal }) =>
+      api<InvitationPreview>('GET', `/invitations/${token}`, undefined, signal),
+    retry: (count, err) => err.status !== 404 && count < 2,
+  });
+}
+
+export function useAcceptInvitation(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation<Membership, ApiError>({
+    mutationFn: () => api<Membership>('POST', `/invitations/${token}/accept`),
+    // La cuenta suma un negocio: hay que recargar el "me" (y con él, el panel).
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: meKey }),
+        queryClient.invalidateQueries({ queryKey: invitationKey(token) }),
+      ]),
   });
 }

@@ -1,7 +1,15 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { client, integrationReady, signUp, startApp, uniqueSlug, withSession } from './helpers.js';
+import {
+  client,
+  integrationReady,
+  signUp,
+  startApp,
+  uniqueSlug,
+  waitForMail,
+  withSession,
+} from './helpers.js';
 
 describe.skipIf(!integrationReady)('equipo e invitaciones (e2e)', () => {
   let app: NestFastifyApplication;
@@ -38,6 +46,12 @@ describe.skipIf(!integrationReady)('equipo e invitaciones (e2e)', () => {
     });
     expect(created.status).toBe(201);
     const { token } = created.body;
+
+    const mail = await waitForMail(app, invited.email, (m) =>
+      m.subject.includes('Te invitaron a Estudio'),
+    );
+    expect(mail.text).toContain(`/invitacion/${token}`);
+    expect(mail.text).toContain('Dueña te invitó');
 
     const preview = await anon('GET', `/invitations/${token}`);
     expect(preview.body).toEqual({

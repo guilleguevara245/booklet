@@ -1,6 +1,6 @@
 import { PASSWORD_MIN } from '@booklet/shared';
 import { type FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Button, Field, FormError } from '../components/ui';
 import { useRegister } from '../lib/auth';
 import { AuthLayout } from './AuthLayout';
@@ -8,13 +8,16 @@ import { AuthLayout } from './AuthLayout';
 export function RegisterPage() {
   const register = useRegister();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Si vino desde una invitación u otra página protegida, vuelve ahí al terminar.
+  const from = (location.state as { from?: string } | null)?.from;
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    register.mutate(form, { onSuccess: () => navigate('/panel', { replace: true }) });
+    register.mutate(form, { onSuccess: () => navigate(from ?? '/panel', { replace: true }) });
   }
 
   // Los errores por campo se muestran junto a cada campo; el general, arriba.
@@ -59,7 +62,11 @@ export function RegisterPage() {
       </form>
       <p className="mt-6 text-center text-sm text-muted dark:text-slate-300">
         ¿Ya tenés cuenta?{' '}
-        <Link to="/entrar" className="font-medium text-brand-dark underline dark:text-violet-300">
+        <Link
+          to="/entrar"
+          state={location.state}
+          className="font-medium text-brand-dark underline dark:text-violet-300"
+        >
           Entrá
         </Link>
       </p>

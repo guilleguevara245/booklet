@@ -6,6 +6,7 @@ import {
   GoneException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -18,8 +19,12 @@ import type {
 } from '@booklet/shared';
 import { and, asc, eq, gt, isNull } from 'drizzle-orm';
 import type { SessionUser } from '../auth/sessions.service.js';
+import { ENV, type Env } from '../config/env.js';
 import { DB, type Database } from '../database/database.module.js';
 import { businesses, invitations, memberships, staff, users } from '../database/schema.js';
+import { JobsService } from '../jobs/jobs.service.js';
+import { renderMail } from '../mail/layout.js';
+import type { MailMessage } from '../mail/mailer.js';
 
 export const INVITATION_DAYS = 7;
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -35,9 +40,36 @@ const toInvitation = (r: typeof invitations.$inferSelect): Invitation => ({
   acceptedAt: r.acceptedAt?.toISOString() ?? null,
 });
 
+const ROLE_LABEL = { owner: 'dueño', staff: 'profesional' } as const;
+
+export function invitationMail(input: {
+  to: string;
+  businessName: string;
+  inviterName: string;
+  role: keyof typeof ROLE_LABEL;
+  url: string;
+}): MailMessage {
+  const { html, text } = renderMail({
+    title: `Te invitaron a ${input.businessName}`,
+    paragraphs: [
+      `${input.inviterName} te invitó a sumarte al equipo de ${input.businessName} en Booklet como ${ROLE_LABEL[input.role]}.`,
+      `Para aceptar, entrá o creá tu cuenta con este mismo email (${input.to}).`,
+    ],
+    action: { label: 'Ver la invitación', url: input.url },
+    footnote: `La invitación vence en ${INVITATION_DAYS} días. Si no esperabas este mail, ignoralo.`,
+  });
+  return { to: input.to, subject: `Te invitaron a ${input.businessName} en Booklet`, html, text };
+}
+
 @Injectable()
 export class TeamService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  private readonly logger = new Logger(TeamService.name);
+
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    @Inject(JobsService) private readonly jobs: JobsService,
+    @Inject(ENV) private readonly env: Env,
+  ) {}
 
   async listMembers(businessId: string): Promise<Member[]> {
     return this.db
@@ -105,7 +137,36 @@ export class TeamService {
         expiresAt: new Date(now.getTime() + INVITATION_DAYS * 86_400_000),
       })
       .returning();
+    await this.mailInvitation(row!, token);
     return { invitation: toInvitation(row!), token };
+  }
+
+  /** El link viaja por mail; si la cola falla, el dueño igual tiene el link en la respuesta. */
+  private async mailInvitation(row: typeof invitations.$inferSelect, token: string) {
+    try {
+      const business = await this.db.query.businesses.findFirst({
+        where: eq(businesses.id, row.businessId),
+        columns: { name: true },
+      });
+      const inviter = row.invitedBy
+        ? await this.db.query.users.findFirst({
+            where: eq(users.id, row.invitedBy),
+            columns: { name: true },
+          })
+        : undefined;
+      await this.jobs.sendMail(
+        invitationMail({
+          to: row.email,
+          businessName: business!.name,
+          inviterName: inviter?.name ?? 'Alguien del equipo',
+          role: row.role,
+          url: `${this.env.WEB_URL}/invitacion/${token}`,
+        }),
+        { jobId: `invite-${row.id}` },
+      );
+    } catch (err) {
+      this.logger.error(`No se pudo encolar la invitación ${row.id}: ${String(err)}`);
+    }
   }
 
   async listPending(businessId: string, now = new Date()): Promise<Invitation[]> {
