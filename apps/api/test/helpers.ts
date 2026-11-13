@@ -4,11 +4,22 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { configureApp, createApp } from '../src/app.factory.js';
 import { AppModule } from '../src/app.module.js';
+import { MAILER, type MailMessage, type MemoryMailer } from '../src/mail/mailer.js';
 
 /** Las pruebas de integración necesitan PostgreSQL y Redis reales. */
 export const integrationReady = Boolean(process.env.DATABASE_URL && process.env.REDIS_URL);
 
+/**
+ * Cada app de prueba usa su propia cola en Redis: si no, el procesador de una app tomaría
+ * los trabajos de otra (y sus mails irían a otra bandeja).
+ */
+function isolateQueue() {
+  process.env.QUEUE_PREFIX = `test-${randomUUID()}`;
+  process.env.JOB_BACKOFF_MS = '20';
+}
+
 export async function startApp(): Promise<NestFastifyApplication> {
+  isolateQueue();
   const app = await createApp({ CORS_ORIGIN: 'http://localhost:5173' });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
@@ -19,6 +30,7 @@ export async function startApp(): Promise<NestFastifyApplication> {
 export async function startAppWith(
   overrides: { provide: unknown; useValue: unknown }[],
 ): Promise<NestFastifyApplication> {
+  isolateQueue();
   let builder = Test.createTestingModule({ imports: [AppModule] });
   for (const o of overrides) {
     builder = builder.overrideProvider(o.provide as symbol).useValue(o.useValue);
@@ -94,4 +106,30 @@ export function sessionHeaders(headers: Record<string, unknown>): Record<string,
   const session = cookies.find((c) => typeof c === 'string' && c.startsWith('booklet_session='));
   if (!session) throw new Error('La respuesta no trajo cookie de sesión');
   return { cookie: String(session).split(';')[0]!, origin: WEB_ORIGIN };
+}
+
+/** La bandeja de mails en memoria de la app (MAIL_TRANSPORT=memory en las pruebas). */
+export function mailbox(app: NestFastifyApplication): MemoryMailer {
+  return app.get<MemoryMailer>(MAILER);
+}
+
+/** Espera a que llegue un mail a esa dirección que cumpla la condición (los manda la cola). */
+export async function waitForMail(
+  app: NestFastifyApplication,
+  to: string,
+  match: (m: MailMessage) => boolean = () => true,
+  timeoutMs = 5000,
+): Promise<MailMessage> {
+  const start = Date.now();
+  for (;;) {
+    const found = mailbox(app).to(to).find(match);
+    if (found) return found;
+    if (Date.now() - start > timeoutMs) {
+      const subjects = mailbox(app)
+        .to(to)
+        .map((m) => m.subject);
+      throw new Error(`No llegó el mail esperado a ${to}. Llegaron: ${JSON.stringify(subjects)}`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }

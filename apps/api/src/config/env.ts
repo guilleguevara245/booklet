@@ -21,6 +21,12 @@ const envSchema = z.object({
   MAIL_TRANSPORT: z.enum(['smtp', 'memory', 'log']).default('smtp'),
   SMTP_URL: z.url().default('smtp://localhost:1025'),
   MAIL_FROM: z.string().default('Booklet <no-responder@booklet.local>'),
+  /** Corre el procesador de trabajos (mails, recordatorios) en este proceso. */
+  WORKER_ENABLED: z.stringbool().default(true),
+  /** Prefijo de las colas en Redis. Las pruebas usan uno distinto por instancia. */
+  QUEUE_PREFIX: z.string().default('booklet'),
+  /** Espera inicial entre reintentos de un trabajo fallido; después se duplica. */
+  JOB_BACKOFF_MS: z.coerce.number().int().nonnegative().default(10_000),
   /** ID de cliente OAuth de Google. Sin él, el inicio con Google responde 503. */
   GOOGLE_CLIENT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
 });

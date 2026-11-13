@@ -7,6 +7,7 @@ import { ClosuresModule } from './closures/closures.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { JobsModule } from './jobs/jobs.module.js';
 import { LocationsModule } from './locations/locations.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
@@ -21,6 +22,7 @@ import { TeamModule } from './team/team.module.js';
     DatabaseModule,
     RedisModule,
     MailModule,
+    JobsModule,
     HealthModule,
     AuthModule,
     RealtimeModule,
