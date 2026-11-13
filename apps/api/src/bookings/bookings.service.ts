@@ -1,9 +1,11 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   AvailableSlot,
   Booking,
   CancelBooking,
   CreateBooking,
+  CreatedBooking,
   ListBookingsQuery,
   MyBooking,
   RescheduleBooking,
@@ -20,8 +22,13 @@ import { bookings, businesses, locations, services, staff } from '../database/sc
 import { LocationsService } from '../locations/locations.service.js';
 import { ServicesService } from '../services/services.service.js';
 import { StaffService } from '../staff/staff.service.js';
+import { BookingNotifier } from './booking-notifier.js';
 
 const MINUTE = 60_000;
+
+/** Token del link "gestionar mi turno": 192 bits al azar, imposible de adivinar. */
+export const newManageToken = () => randomBytes(24).toString('base64url');
+export const hashManageToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -50,6 +57,7 @@ export class BookingsService {
     @Inject(LocationsService) private readonly locations: LocationsService,
     @Inject(AvailabilityService) private readonly availability: AvailabilityService,
     @Inject(BookingEvents) private readonly events: BookingEvents,
+    @Inject(BookingNotifier) private readonly notifier: BookingNotifier,
   ) {}
 
   /**
@@ -63,7 +71,7 @@ export class BookingsService {
     input: CreateBooking,
     now = new Date(),
     customerUserId: string | null = null,
-  ): Promise<Booking> {
+  ): Promise<CreatedBooking> {
     await this.businesses.require(businessId);
     const [service, , location] = await Promise.all([
       this.services.get(businessId, input.serviceId),
@@ -80,6 +88,7 @@ export class BookingsService {
     if (!offered) throw new ConflictException(SLOT_NOT_OFFERED);
 
     const endsAt = new Date(start.getTime() + service.durationMinutes * MINUTE);
+    const manageToken = newManageToken();
     try {
       const row = await this.db.transaction(async (tx) => {
         await lockStaffAgenda(tx, input.staffId);
@@ -97,13 +106,15 @@ export class BookingsService {
             startsAt: start,
             endsAt,
             blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
+            manageTokenHash: hashManageToken(manageToken),
           })
           .returning();
         return inserted!;
       });
       const booking = toBooking(row);
       this.events.publish('booking.created', booking);
-      return booking;
+      await this.notifier.created(await this.view(booking.id), manageToken);
+      return { ...booking, manageToken };
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
     }
@@ -234,6 +245,17 @@ export class BookingsService {
    * también los que reservó con ese email antes de tener cuenta.
    */
   async listMine(user: SessionUser): Promise<MyBooking[]> {
+    return this.views(this.ownedBy(user), 200);
+  }
+
+  /** Un turno con los nombres del negocio, servicio, profesional y sucursal. */
+  async view(id: string): Promise<MyBooking> {
+    const [found] = await this.views(eq(bookings.id, id), 1);
+    if (!found) throw new NotFoundException('Turno no encontrado');
+    return found;
+  }
+
+  private async views(where: SQL | undefined, limit: number): Promise<MyBooking[]> {
     const rows = await this.db
       .select({
         booking: bookings,
@@ -242,6 +264,7 @@ export class BookingsService {
         serviceName: services.name,
         staffName: staff.name,
         locationName: locations.name,
+        locationAddress: locations.address,
         locationTimezone: locations.timezone,
       })
       .from(bookings)
@@ -249,15 +272,16 @@ export class BookingsService {
       .innerJoin(services, eq(services.id, bookings.serviceId))
       .innerJoin(staff, eq(staff.id, bookings.staffId))
       .innerJoin(locations, eq(locations.id, bookings.locationId))
-      .where(this.ownedBy(user))
+      .where(where)
       .orderBy(desc(bookings.startsAt))
-      .limit(200);
+      .limit(limit);
     return rows.map((r) => ({
       ...toBooking(r.booking),
       business: { name: r.businessName, slug: r.businessSlug },
       serviceName: r.serviceName,
       staffName: r.staffName,
       locationName: r.locationName,
+      locationAddress: r.locationAddress,
       locationTimezone: r.locationTimezone,
     }));
   }

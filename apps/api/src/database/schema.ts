@@ -194,6 +194,11 @@ export const bookings = pgTable(
     status: bookingStatus('status').notNull().default('confirmed'),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     cancelReason: text('cancel_reason'),
+    /**
+     * Hash del token del link "gestionar mi turno" que va en los mails: con él, quien reservó
+     * cancela o reprograma sin cuenta. Como con las sesiones, el token no se guarda.
+     */
+    manageTokenHash: text('manage_token_hash'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -202,6 +207,7 @@ export const bookings = pgTable(
     index('bookings_staff_starts_idx').on(t.staffId, t.startsAt),
     index('bookings_customer_user_idx').on(t.customerUserId),
     index('bookings_customer_email_idx').on(t.customerEmail),
+    uniqueIndex('bookings_manage_token_key').on(t.manageTokenHash),
     check('bookings_range_check', sql`${t.endsAt} > ${t.startsAt}`),
     check('bookings_blocked_check', sql`${t.blockedUntil} >= ${t.endsAt}`),
   ],

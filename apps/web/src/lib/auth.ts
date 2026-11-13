@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  AvailableSlot,
   Booking,
   Login,
   MeResponse,
@@ -70,5 +71,44 @@ export function useCancelMyBooking() {
   return useMutation<Booking, ApiError, string>({
     mutationFn: (id) => api<Booking>('POST', `/me/bookings/${id}/cancel`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me', 'bookings'] }),
+  });
+}
+
+// --- Link "gestionar mi turno" de los mails (sin sesión, con el token) ---
+
+export const manageKey = (token: string) => ['manage', token] as const;
+
+export function useManagedBooking(token: string) {
+  return useQuery({
+    queryKey: manageKey(token),
+    queryFn: ({ signal }) => api<MyBooking>('GET', `/manage/${token}`, undefined, signal),
+    retry: (count, err) => (err as ApiError).status !== 404 && count < 2,
+  });
+}
+
+export function useManagedOptions(token: string, date: string | null) {
+  return useQuery({
+    queryKey: [...manageKey(token), 'options', date],
+    enabled: date !== null,
+    queryFn: ({ signal }) =>
+      api<AvailableSlot[]>('GET', `/manage/${token}/options?date=${date}`, undefined, signal),
+  });
+}
+
+export function useManageAction(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    MyBooking,
+    ApiError,
+    { action: 'cancel' } | { action: 'reschedule'; startsAt: string; staffId: string }
+  >({
+    mutationFn: (input) =>
+      input.action === 'cancel'
+        ? api<MyBooking>('POST', `/manage/${token}/cancel`, {})
+        : api<MyBooking>('POST', `/manage/${token}/reschedule`, {
+            startsAt: input.startsAt,
+            staffId: input.staffId,
+          }),
+    onSuccess: (booking) => queryClient.setQueryData(manageKey(token), booking),
   });
 }

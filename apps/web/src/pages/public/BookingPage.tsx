@@ -1,4 +1,4 @@
-import type { Booking, Location, Service } from '@booklet/shared';
+import type { CreatedBooking, Location, Service } from '@booklet/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
@@ -72,7 +72,7 @@ export function BookingPage() {
   );
   const chosenStaff = staff.data?.find((s) => s.id === choice.with);
   const queryClient = useQueryClient();
-  const [booked, setBooked] = useState<Booking | null>(null);
+  const [booked, setBooked] = useState<CreatedBooking | null>(null);
   // El horario elegido se ocupó mientras la persona completaba sus datos.
   const [slotTaken, setSlotTaken] = useState(false);
   const bookedStaff = staff.data?.find((s) => s.id === booked?.staffId);

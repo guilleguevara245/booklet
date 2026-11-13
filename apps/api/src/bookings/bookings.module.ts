@@ -4,12 +4,14 @@ import { LocationsModule } from '../locations/locations.module.js';
 import { ServicesModule } from '../services/services.module.js';
 import { StaffModule } from '../staff/staff.module.js';
 import { BookingsController, MyBookingsController } from './bookings.controller.js';
+import { ManageBookingController } from './manage.controller.js';
+import { BookingNotifier } from './booking-notifier.js';
 import { BookingsService } from './bookings.service.js';
 
 @Module({
   imports: [AvailabilityModule, LocationsModule, ServicesModule, StaffModule],
-  controllers: [BookingsController, MyBookingsController],
-  providers: [BookingsService],
+  controllers: [BookingsController, MyBookingsController, ManageBookingController],
+  providers: [BookingsService, BookingNotifier],
   exports: [BookingsService],
 })
 export class BookingsModule {}

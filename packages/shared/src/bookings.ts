@@ -75,6 +75,7 @@ export interface MyBooking extends Booking {
   serviceName: string;
   staffName: string;
   locationName: string;
+  locationAddress: string | null;
   /** Zona horaria de la sucursal, para mostrar el horario como lo ve el negocio. */
   locationTimezone: string;
 }
@@ -84,3 +85,8 @@ export const rescheduleOptionsQuerySchema = z.object({
   date: z.iso.date({ error: 'Formato YYYY-MM-DD' }),
 });
 export type RescheduleOptionsQuery = z.infer<typeof rescheduleOptionsQuerySchema>;
+
+/** Respuesta al reservar: incluye, una sola vez, el token del link para gestionar el turno. */
+export interface CreatedBooking extends Booking {
+  manageToken: string;
+}

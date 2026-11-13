@@ -43,6 +43,13 @@
       "when": 1794580152305,
       "tag": "0005_customer_bookings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794604836746,
+      "tag": "0006_manage_token",
+      "breakpoints": true
     }
   ]
 }

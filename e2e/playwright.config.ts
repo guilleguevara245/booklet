@@ -36,7 +36,14 @@ export default defineConfig({
       cwd: '../apps/api',
       url: 'http://127.0.0.1:3000/health',
       reuseExistingServer: !process.env.CI,
-      env: { DATABASE_URL, REDIS_URL, PORT: '3000', CORS_ORIGIN: WEB_URL, NODE_ENV: 'test' },
+      env: {
+        DATABASE_URL,
+        REDIS_URL,
+        PORT: '3000',
+        CORS_ORIGIN: WEB_URL,
+        NODE_ENV: 'test',
+        MAIL_TRANSPORT: process.env.MAIL_TRANSPORT ?? 'log',
+      },
     },
     {
       command: 'pnpm exec vite --port 5173 --strictPort',

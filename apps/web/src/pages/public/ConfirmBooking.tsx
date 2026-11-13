@@ -1,4 +1,4 @@
-import type { Booking, Location, Service, Staff } from '@booklet/shared';
+import type { CreatedBooking, Location, Service, Staff } from '@booklet/shared';
 import { DateTime } from 'luxon';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
@@ -17,7 +17,7 @@ interface Props {
   start: string;
   /** El horario se ocupó mientras la persona completaba el formulario. */
   onSlotTaken: () => void;
-  onBooked: (booking: Booking) => void;
+  onBooked: (booking: CreatedBooking) => void;
 }
 
 const when = (iso: string, zone: string) =>
@@ -98,7 +98,7 @@ export function ConfirmBooking(props: Props) {
           required
           value={form.email}
           onChange={set('email')}
-          hint="Por si el negocio necesita contactarte."
+          hint="Te mandamos la confirmación y un link para cambiar o cancelar el turno."
           error={create.error?.field('customer.email')}
         />
         <Field
@@ -126,7 +126,7 @@ export function BookingConfirmed({
   staff,
   onAnother,
 }: {
-  booking: Booking;
+  booking: CreatedBooking;
   businessName: string;
   service: Service;
   location: Location;
@@ -171,6 +171,10 @@ export function BookingConfirmed({
           {businessName} · {[location.name, location.address].filter(Boolean).join(', ')}
         </span>
       </p>
+      <p className="text-sm text-muted dark:text-slate-300">
+        Te mandamos la confirmación a {booking.customer.email}, con un link para cambiar o cancelar
+        el turno.
+      </p>
       <div className="flex flex-wrap gap-2">
         <a
           href={icsUrl}
@@ -179,6 +183,12 @@ export function BookingConfirmed({
         >
           Agregar al calendario
         </a>
+        <Link
+          to={`/turno/${booking.manageToken}`}
+          className={`${linkClass} border border-slate-300 hover:bg-slate-50 dark:border-white/20 dark:hover:bg-white/10`}
+        >
+          Ver o cambiar el turno
+        </Link>
         {me && (
           <Link
             to="/mis-turnos"

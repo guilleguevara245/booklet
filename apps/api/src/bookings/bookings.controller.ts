@@ -9,6 +9,7 @@ import {
   type Booking,
   type CancelBooking,
   type CreateBooking,
+  type CreatedBooking,
   type ListBookingsQuery,
   type MyBooking,
   type RescheduleBooking,
@@ -30,7 +31,7 @@ export class BookingsController {
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createBookingSchema)) body: CreateBooking,
     @CurrentUser() user: SessionUser | undefined,
-  ): Promise<Booking> {
+  ): Promise<CreatedBooking> {
     return this.bookings.create(businessId, body, new Date(), user?.id ?? null);
   }
 
