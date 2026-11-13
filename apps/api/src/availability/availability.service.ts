@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { AvailabilityQuery, AvailabilityResponse, AvailableSlot } from '@booklet/shared';
-import { and, eq, gt, inArray, lt } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import { DB, type Database } from '../database/database.module.js';
@@ -28,10 +28,15 @@ export class AvailabilityService {
     @Inject(ServicesService) private readonly services: ServicesService,
   ) {}
 
+  /**
+   * `ignoreBookingId` deja afuera un turno al calcular: al reprogramarlo, su horario actual
+   * no debe impedir moverlo a uno cercano.
+   */
   async find(
     businessId: string,
     q: AvailabilityQuery,
     now = new Date(),
+    opts: { ignoreBookingId?: string } = {},
   ): Promise<AvailabilityResponse> {
     await this.businesses.require(businessId);
     const service = await this.services.get(businessId, q.serviceId);
@@ -113,6 +118,7 @@ export class AvailabilityService {
               and(
                 inArray(bookings.staffId, staffIds),
                 eq(bookings.status, 'confirmed'),
+                opts.ignoreBookingId ? ne(bookings.id, opts.ignoreBookingId) : undefined,
                 lt(bookings.startsAt, rangeEnd),
                 gt(bookings.blockedUntil, rangeStart),
               ),
@@ -162,12 +168,14 @@ export class AvailabilityService {
     businessId: string,
     p: { serviceId: string; staffId: string; locationId: string; timezone: string; start: Date },
     now = new Date(),
+    opts: { ignoreBookingId?: string } = {},
   ): Promise<boolean> {
     const day = DateTime.fromJSDate(p.start, { zone: p.timezone }).toISODate()!;
     const { slots } = await this.find(
       businessId,
       { serviceId: p.serviceId, staffId: p.staffId, locationId: p.locationId, from: day, to: day },
       now,
+      opts,
     );
     const wanted = p.start.toISOString();
     return slots.some((s) => s.start === wanted);

@@ -55,3 +55,16 @@ export interface Booking {
   cancelReason: string | null;
   createdAt: string;
 }
+
+export const cancelBookingSchema = z
+  .object({ reason: z.string().trim().max(200).nullish() })
+  .default({});
+export type CancelBooking = z.infer<typeof cancelBookingSchema>;
+
+/** Mueve un turno a otro horario y, opcionalmente, a otro profesional o sucursal. */
+export const rescheduleBookingSchema = z.object({
+  startsAt: instant,
+  staffId: id.optional(),
+  locationId: id.optional(),
+});
+export type RescheduleBooking = z.infer<typeof rescheduleBookingSchema>;

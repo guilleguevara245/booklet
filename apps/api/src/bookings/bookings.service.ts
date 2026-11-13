@@ -1,5 +1,11 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { Booking, CreateBooking, ListBookingsQuery } from '@booklet/shared';
+import type {
+  Booking,
+  CancelBooking,
+  CreateBooking,
+  ListBookingsQuery,
+  RescheduleBooking,
+} from '@booklet/shared';
 import { and, asc, eq, gt, lt, sql, type SQL } from 'drizzle-orm';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { BusinessesService } from '../businesses/businesses.service.js';
@@ -27,6 +33,8 @@ async function lockStaffAgenda(tx: Tx, staffId: string): Promise<void> {
 }
 export const SLOT_TAKEN = 'Ese horario ya fue tomado. Elegí otro.';
 export const SLOT_NOT_OFFERED = 'Ese horario no está disponible para este servicio.';
+export const ALREADY_CANCELLED = 'El turno ya estaba cancelado.';
+export const ALREADY_STARTED = 'El turno ya empezó o ya pasó: no se puede modificar.';
 
 @Injectable()
 export class BookingsService {
@@ -108,5 +116,103 @@ export class BookingsService {
     });
     if (!row) throw new NotFoundException('Turno no encontrado');
     return toBooking(row);
+  }
+
+  /** Cancela un turno confirmado que todavía no empezó. Libera su horario al instante. */
+  async cancel(
+    businessId: string,
+    id: string,
+    input: CancelBooking,
+    now = new Date(),
+  ): Promise<Booking> {
+    const current = await this.get(businessId, id);
+    this.assertModifiable(current, now);
+    const [row] = await this.db
+      .update(bookings)
+      .set({
+        status: 'cancelled',
+        cancelledAt: now,
+        cancelReason: input.reason ?? null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(bookings.id, id),
+          eq(bookings.businessId, businessId),
+          eq(bookings.status, 'confirmed'),
+        ),
+      )
+      .returning();
+    // Si otra cancelación ganó en el medio, la condición sobre el estado no encuentra la fila.
+    if (!row) throw new ConflictException(ALREADY_CANCELLED);
+    return toBooking(row);
+  }
+
+  /**
+   * Mueve un turno a otro horario, y si se pide, a otro profesional o sucursal. El horario
+   * actual del turno no cuenta como ocupado, así que se lo puede correr unos minutos.
+   */
+  async reschedule(
+    businessId: string,
+    id: string,
+    input: RescheduleBooking,
+    now = new Date(),
+  ): Promise<Booking> {
+    const current = await this.get(businessId, id);
+    this.assertModifiable(current, now);
+    const staffId = input.staffId ?? current.staffId;
+    const locationId = input.locationId ?? current.locationId;
+    const [service, , location] = await Promise.all([
+      this.services.get(businessId, current.serviceId),
+      this.staff.get(businessId, staffId),
+      this.locations.get(businessId, locationId),
+    ]);
+    const start = new Date(input.startsAt);
+
+    const offered = await this.availability.isOffered(
+      businessId,
+      { serviceId: service.id, staffId, locationId, timezone: location.timezone, start },
+      now,
+      { ignoreBookingId: id },
+    );
+    if (!offered) throw new ConflictException(SLOT_NOT_OFFERED);
+
+    const endsAt = new Date(start.getTime() + service.durationMinutes * MINUTE);
+    try {
+      const row = await this.db.transaction(async (tx) => {
+        // Siempre en el mismo orden, para que dos reprogramaciones cruzadas no se traben.
+        for (const s of [...new Set([current.staffId, staffId])].sort()) {
+          await lockStaffAgenda(tx, s);
+        }
+        const [updated] = await tx
+          .update(bookings)
+          .set({
+            staffId,
+            locationId,
+            startsAt: start,
+            endsAt,
+            blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(bookings.id, id),
+              eq(bookings.businessId, businessId),
+              eq(bookings.status, 'confirmed'),
+            ),
+          )
+          .returning();
+        return updated;
+      });
+      if (!row) throw new ConflictException(ALREADY_CANCELLED);
+      return toBooking(row);
+    } catch (err) {
+      rethrowOverlap(err, SLOT_TAKEN);
+    }
+  }
+
+  private assertModifiable(booking: Booking, now: Date): void {
+    if (booking.status !== 'confirmed') throw new ConflictException(ALREADY_CANCELLED);
+    if (new Date(booking.startsAt) <= now) throw new ConflictException(ALREADY_STARTED);
   }
 }

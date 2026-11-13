@@ -1,4 +1,5 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, integrationReady, startApp, uniqueSlug } from './helpers.js';
 
@@ -162,6 +163,106 @@ describe.skipIf(!integrationReady)('reservas (e2e)', () => {
       });
       await book(NINE, { locationId: centro.id, serviceId: service.id });
       expect(await availability()).not.toContain('12:00');
+    });
+  });
+
+  describe('cancelar', () => {
+    it('cancela un turno y libera el horario', async () => {
+      const { base, book, availability } = await setup();
+      const booking = (await book(NINE)).body;
+      const res = await api('POST', `${base}/bookings/${booking.id}/cancel`, {
+        reason: 'No puedo ir',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: 'cancelled', cancelReason: 'No puedo ir' });
+      expect(res.body.cancelledAt).toEqual(expect.any(String));
+
+      expect(await availability()).toHaveLength(9);
+      expect((await book(NINE)).status).toBe(201);
+    });
+
+    it('acepta cancelar sin motivo y no deja cancelar dos veces', async () => {
+      const { base, book } = await setup();
+      const booking = (await book(NINE)).body;
+      expect((await api('POST', `${base}/bookings/${booking.id}/cancel`)).status).toBe(200);
+      expect((await api('POST', `${base}/bookings/${booking.id}/cancel`)).status).toBe(409);
+    });
+
+    it('no deja cancelar un turno que ya pasó', async () => {
+      const { base, book } = await setup();
+      const booking = (await book(NINE)).body;
+      // Se lo corre al pasado directo en la base: por la API no se puede reservar en el pasado.
+      const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
+      await sql`update bookings set starts_at = '2020-01-06T12:00:00Z', ends_at = '2020-01-06T13:00:00Z',
+        blocked_until = '2020-01-06T13:15:00Z' where id = ${booking.id}`;
+      await sql.end();
+      expect((await api('POST', `${base}/bookings/${booking.id}/cancel`)).status).toBe(409);
+    });
+  });
+
+  describe('reprogramar', () => {
+    it('mueve un turno y libera el horario anterior', async () => {
+      const { base, book, availability } = await setup();
+      const booking = (await book(NINE)).body;
+      const res = await api('POST', `${base}/bookings/${booking.id}/reschedule`, {
+        startsAt: '2030-01-07T10:45:00-03:00',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: booking.id,
+        startsAt: '2030-01-07T13:45:00.000Z',
+        endsAt: '2030-01-07T14:45:00.000Z',
+        status: 'confirmed',
+      });
+      // Libre de 09:00 hasta que el nuevo turno lo impida (09:30 + 75 min = 10:45).
+      expect(await availability()).toEqual(['12:00', '12:15', '12:30']);
+    });
+
+    it('permite correrlo unos minutos aunque se pise con su propio horario', async () => {
+      const { base, book } = await setup();
+      const booking = (await book(NINE)).body;
+      const res = await api('POST', `${base}/bookings/${booking.id}/reschedule`, {
+        startsAt: '2030-01-07T09:15:00-03:00',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.startsAt).toBe('2030-01-07T12:15:00.000Z');
+    });
+
+    it('no deja moverlo a un horario tomado por otro turno', async () => {
+      const { base, book } = await setup();
+      const first = (await book(NINE)).body;
+      await book('2030-01-07T10:15:00-03:00');
+      const res = await api('POST', `${base}/bookings/${first.id}/reschedule`, {
+        startsAt: '2030-01-07T10:30:00-03:00',
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it('lo pasa a otra profesional', async () => {
+      const { base, location, service, book } = await setup();
+      const bea = (await api('POST', `${base}/staff`, { name: 'Bea', serviceIds: [service.id] }))
+        .body;
+      await api('PUT', `${base}/staff/${bea.id}/schedule`, {
+        locationId: location.id,
+        rules: [{ weekday: 1, start: '09:00', end: '12:00' }],
+      });
+      const booking = (await book(NINE)).body;
+      const res = await api('POST', `${base}/bookings/${booking.id}/reschedule`, {
+        startsAt: NINE,
+        staffId: bea.id,
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.staffId).toBe(bea.id);
+    });
+
+    it('no deja reprogramar un turno cancelado', async () => {
+      const { base, book } = await setup();
+      const booking = (await book(NINE)).body;
+      await api('POST', `${base}/bookings/${booking.id}/cancel`);
+      const res = await api('POST', `${base}/bookings/${booking.id}/reschedule`, {
+        startsAt: '2030-01-07T10:00:00-03:00',
+      });
+      expect(res.status).toBe(409);
     });
   });
 });

@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import {
+  cancelBookingSchema,
   createBookingSchema,
   listBookingsQuerySchema,
+  rescheduleBookingSchema,
   type Booking,
+  type CancelBooking,
   type CreateBooking,
   type ListBookingsQuery,
+  type RescheduleBooking,
 } from '@booklet/shared';
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
@@ -36,5 +40,25 @@ export class BookingsController {
     @Param('id', UuidPipe) id: string,
   ): Promise<Booking> {
     return this.bookings.get(businessId, id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('businessId', UuidPipe) businessId: string,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(cancelBookingSchema)) body: CancelBooking,
+  ): Promise<Booking> {
+    return this.bookings.cancel(businessId, id, body);
+  }
+
+  @Post(':id/reschedule')
+  @HttpCode(200)
+  reschedule(
+    @Param('businessId', UuidPipe) businessId: string,
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(rescheduleBookingSchema)) body: RescheduleBooking,
+  ): Promise<Booking> {
+    return this.bookings.reschedule(businessId, id, body);
   }
 }
