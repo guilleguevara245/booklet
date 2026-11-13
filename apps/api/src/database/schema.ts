@@ -184,6 +184,10 @@ export const bookings = pgTable(
     customerName: text('customer_name').notNull(),
     customerEmail: text('customer_email').notNull(),
     customerPhone: text('customer_phone'),
+    /** Cuenta de quien reservó, si reservó con la sesión iniciada. */
+    customerUserId: uuid('customer_user_id').references((): AnyPgColumn => users.id, {
+      onDelete: 'set null',
+    }),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
     blockedUntil: timestamp('blocked_until', { withTimezone: true }).notNull(),
@@ -196,6 +200,8 @@ export const bookings = pgTable(
   (t) => [
     index('bookings_business_starts_idx').on(t.businessId, t.startsAt),
     index('bookings_staff_starts_idx').on(t.staffId, t.startsAt),
+    index('bookings_customer_user_idx').on(t.customerUserId),
+    index('bookings_customer_email_idx').on(t.customerEmail),
     check('bookings_range_check', sql`${t.endsAt} > ${t.startsAt}`),
     check('bookings_blocked_check', sql`${t.blockedUntil} >= ${t.endsAt}`),
   ],

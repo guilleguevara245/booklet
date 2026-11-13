@@ -68,3 +68,11 @@ export const rescheduleBookingSchema = z.object({
   locationId: id.optional(),
 });
 export type RescheduleBooking = z.infer<typeof rescheduleBookingSchema>;
+
+/** Un turno visto por quien lo reservó, con los nombres para mostrarlo. */
+export interface MyBooking extends Booking {
+  business: { name: string; slug: string };
+  serviceName: string;
+  staffName: string;
+  locationName: string;
+}

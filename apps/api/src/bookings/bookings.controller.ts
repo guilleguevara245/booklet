@@ -8,12 +8,14 @@ import {
   type CancelBooking,
   type CreateBooking,
   type ListBookingsQuery,
+  type MyBooking,
   type RescheduleBooking,
 } from '@booklet/shared';
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { BookingsService } from './bookings.service.js';
-import { Public, Roles } from '../auth/request-user.js';
+import { CurrentUser, Public, Roles } from '../auth/request-user.js';
+import type { SessionUser } from '../auth/sessions.service.js';
 
 @Controller('businesses/:businessId/bookings')
 export class BookingsController {
@@ -24,8 +26,9 @@ export class BookingsController {
   create(
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createBookingSchema)) body: CreateBooking,
+    @CurrentUser() user: SessionUser | undefined,
   ): Promise<Booking> {
-    return this.bookings.create(businessId, body);
+    return this.bookings.create(businessId, body, new Date(), user?.id ?? null);
   }
 
   @Get()
@@ -66,5 +69,26 @@ export class BookingsController {
     @Body(new ZodPipe(rescheduleBookingSchema)) body: RescheduleBooking,
   ): Promise<Booking> {
     return this.bookings.reschedule(businessId, id, body);
+  }
+}
+
+/** Turnos de la persona con sesión, en cualquier negocio. */
+@Controller('me/bookings')
+export class MyBookingsController {
+  constructor(@Inject(BookingsService) private readonly bookings: BookingsService) {}
+
+  @Get()
+  list(@CurrentUser() user: SessionUser): Promise<MyBooking[]> {
+    return this.bookings.listMine(user);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('id', UuidPipe) id: string,
+    @Body(new ZodPipe(cancelBookingSchema)) body: CancelBooking,
+    @CurrentUser() user: SessionUser,
+  ): Promise<Booking> {
+    return this.bookings.cancelMine(user, id, body);
   }
 }

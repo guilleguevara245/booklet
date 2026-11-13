@@ -4,15 +4,17 @@ import type {
   CancelBooking,
   CreateBooking,
   ListBookingsQuery,
+  MyBooking,
   RescheduleBooking,
 } from '@booklet/shared';
-import { and, asc, eq, gt, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import { AvailabilityService } from '../availability/availability.service.js';
 import { BusinessesService } from '../businesses/businesses.service.js';
 import { rethrowOverlap } from '../common/db-errors.js';
 import { toBooking } from '../common/mappers.js';
 import { DB, type Database } from '../database/database.module.js';
-import { bookings } from '../database/schema.js';
+import type { SessionUser } from '../auth/sessions.service.js';
+import { bookings, businesses, locations, services, staff } from '../database/schema.js';
 import { LocationsService } from '../locations/locations.service.js';
 import { ServicesService } from '../services/services.service.js';
 import { StaffService } from '../staff/staff.service.js';
@@ -52,7 +54,13 @@ export class BookingsService {
    * cierres, anticipación); después lo guarda. Si otra reserva ganó el horario en el medio,
    * la restricción de la base lo rechaza y se responde 409.
    */
-  async create(businessId: string, input: CreateBooking, now = new Date()): Promise<Booking> {
+  /** `customerUserId`: quien reserva con la sesión iniciada queda vinculado al turno. */
+  async create(
+    businessId: string,
+    input: CreateBooking,
+    now = new Date(),
+    customerUserId: string | null = null,
+  ): Promise<Booking> {
     await this.businesses.require(businessId);
     const [service, , location] = await Promise.all([
       this.services.get(businessId, input.serviceId),
@@ -82,6 +90,7 @@ export class BookingsService {
             customerName: input.customer.name,
             customerEmail: input.customer.email,
             customerPhone: input.customer.phone ?? null,
+            customerUserId,
             startsAt: start,
             endsAt,
             blockedUntil: new Date(endsAt.getTime() + service.bufferMinutes * MINUTE),
@@ -209,6 +218,58 @@ export class BookingsService {
     } catch (err) {
       rethrowOverlap(err, SLOT_TAKEN);
     }
+  }
+
+  /**
+   * Turnos de una persona: los que reservó con su cuenta y, si su email está verificado,
+   * también los que reservó con ese email antes de tener cuenta.
+   */
+  async listMine(user: SessionUser): Promise<MyBooking[]> {
+    const rows = await this.db
+      .select({
+        booking: bookings,
+        businessName: businesses.name,
+        businessSlug: businesses.slug,
+        serviceName: services.name,
+        staffName: staff.name,
+        locationName: locations.name,
+      })
+      .from(bookings)
+      .innerJoin(businesses, eq(businesses.id, bookings.businessId))
+      .innerJoin(services, eq(services.id, bookings.serviceId))
+      .innerJoin(staff, eq(staff.id, bookings.staffId))
+      .innerJoin(locations, eq(locations.id, bookings.locationId))
+      .where(this.ownedBy(user))
+      .orderBy(desc(bookings.startsAt))
+      .limit(200);
+    return rows.map((r) => ({
+      ...toBooking(r.booking),
+      business: { name: r.businessName, slug: r.businessSlug },
+      serviceName: r.serviceName,
+      staffName: r.staffName,
+      locationName: r.locationName,
+    }));
+  }
+
+  /** Quien reservó cancela su propio turno. Un turno ajeno responde 404, como si no existiera. */
+  async cancelMine(
+    user: SessionUser,
+    id: string,
+    input: CancelBooking,
+    now = new Date(),
+  ): Promise<Booking> {
+    const row = await this.db.query.bookings.findFirst({
+      where: and(eq(bookings.id, id), this.ownedBy(user)),
+      columns: { businessId: true },
+    });
+    if (!row) throw new NotFoundException('Turno no encontrado');
+    return this.cancel(row.businessId, id, input, now);
+  }
+
+  private ownedBy(user: SessionUser) {
+    return user.emailVerified
+      ? or(eq(bookings.customerUserId, user.id), eq(bookings.customerEmail, user.email))
+      : eq(bookings.customerUserId, user.id);
   }
 
   private assertModifiable(booking: Booking, now: Date): void {
