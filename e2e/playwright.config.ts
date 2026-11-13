@@ -34,7 +34,7 @@ export default defineConfig({
     {
       command: 'node dist/main.js',
       cwd: '../apps/api',
-      url: 'http://localhost:3000/health',
+      url: 'http://127.0.0.1:3000/health',
       reuseExistingServer: !process.env.CI,
       env: { DATABASE_URL, REDIS_URL, PORT: '3000', CORS_ORIGIN: WEB_URL, NODE_ENV: 'test' },
     },

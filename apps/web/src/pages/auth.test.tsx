@@ -97,3 +97,19 @@ describe('después de visitar la portada sin sesión', () => {
     expect(router.state.location.pathname).toBe('/panel');
   });
 });
+
+describe('sin conexión con la API', () => {
+  it('explica que no se pudo conectar en vez de mostrar el código de error', async () => {
+    mockApi({
+      'GET /auth/me': { status: 401, body: {} },
+      'POST /auth/login': { status: 502 },
+    });
+    renderApp('/entrar');
+    await userEvent.type(screen.getByLabelText('Email'), 'ana@example.com');
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'contraseña segura');
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No pudimos conectar con el servidor',
+    );
+  });
+});

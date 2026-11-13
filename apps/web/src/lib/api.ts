@@ -41,7 +41,15 @@ export async function api<T>(
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
-    throw new ApiError(res.status, message ?? `Error ${res.status}`, data.issues ?? []);
+    throw new ApiError(res.status, message ?? fallbackMessage(res.status), data.issues ?? []);
   }
   return data as T;
+}
+
+/** Mensaje cuando la respuesta no trae uno: típicamente, la API no está corriendo. */
+function fallbackMessage(status: number): string {
+  if (status === 502 || status === 503 || status === 504) {
+    return 'No pudimos conectar con el servidor. Probá de nuevo en un momento.';
+  }
+  return `Algo salió mal (error ${status}). Probá de nuevo.`;
 }
