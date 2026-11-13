@@ -50,8 +50,8 @@ docs/brand       logo e ícono
 - [x] **Fase 0 · Fundaciones:** monorepo, Docker Compose, CI, chequeo de salud de la API.
 - [x] **Fase 1 · Modelo y agenda:** negocios, sucursales, profesionales, servicios, horarios y cierres; cálculo
       de disponibilidad con zonas horarias.
-- [ ] **Fase 2 · Reservas sin choques:** restricción de exclusión de PostgreSQL (`EXCLUDE USING gist` sobre
-      `tstzrange`) para que la base misma impida un turno doble.
+- [x] **Fase 2 · Reservas sin choques:** reservar, cancelar y reprogramar; la base de datos impide un turno
+      doble aunque lleguen muchas reservas al mismo tiempo.
 - [ ] **Fase 3 · Cuentas y roles:** dueño, staff y cliente; Google o mail; invitaciones.
 - [ ] **Fase 4 · Agenda en tiempo real:** WebSockets, una sala por negocio.
 - [ ] **Fase 5 · Página pública de reservas:** `/n/mi-negocio`.
@@ -67,12 +67,33 @@ docs/brand       logo e ícono
 - Un profesional puede tener varios tramos por día (horario partido) y atender en varias sucursales. Los tramos
   contiguos se unen, así que un turno puede cruzarlos.
 - Un turno se ofrece si entra completo en el horario y, sumando el margen posterior del servicio, no pisa un
-  cierre. Los cierres pueden ser de todo el negocio, de una sucursal o de una sola persona.
-- Los turnos empiezan cada 15 minutos y con al menos una hora de anticipación. Desde la fase 2, los turnos ya
-  tomados se descuentan igual que un cierre.
+  cierre ni otro turno. Los cierres pueden ser de todo el negocio, de una sucursal o de una sola persona.
+- Un turno tomado ocupa al profesional en todas sus sucursales: nadie atiende en dos lugares a la vez.
+- Los turnos empiezan cada 15 minutos y con al menos una hora de anticipación.
 
 La lógica es una función pura (`apps/api/src/availability/compute.ts`) con pruebas para horarios partidos,
 márgenes, anticipación y los dos cambios de hora de verano.
+
+## Cómo se evita un turno doble
+
+Al reservar, la API primero comprueba que el horario se ofrezca. Pero si dos personas reservan al mismo tiempo,
+las dos pasan ese chequeo. La garantía real está en PostgreSQL, con una restricción de exclusión
+(`apps/api/drizzle/0002_bookings_no_overlap.sql`):
+
+```sql
+ALTER TABLE bookings ADD CONSTRAINT bookings_no_overlap EXCLUDE USING gist (
+  staff_id WITH =,
+  tstzrange(starts_at, blocked_until, '[)') WITH &&
+) WHERE (status = 'confirmed');
+```
+
+Dos turnos confirmados del mismo profesional no pueden superponerse, contando el margen posterior. La segunda
+reserva recibe un 409. Una prueba lanza 20 reservas simultáneas al mismo horario y verifica que entre una sola.
+
+Esa prueba encontró un problema real: con horarios distintos que se pisan, PostgreSQL a veces respondía
+`deadlock detected` (un error 500). Ahora, antes de guardar, cada reserva toma un candado sobre la agenda de ese
+profesional (`pg_advisory_xact_lock`): las reservas del mismo profesional se ponen en fila y la segunda recibe
+un 409 limpio. La restricción sigue siendo la garantía; el candado solo evita el bloqueo mutuo.
 
 ## API
 
@@ -95,8 +116,13 @@ Los endpoints de gestión todavía no piden sesión: las cuentas y los permisos 
 | `GET` `POST`  | `/businesses/:id/closures`                       | feriados, vacaciones y otros cierres              |
 | `DELETE`      | `/businesses/:id/closures/:closureId`            | borra un cierre                                   |
 | `GET`         | `/businesses/:id/availability?serviceId&from&to` | turnos libres (opcional: `staffId`, `locationId`) |
+| `GET` `POST`  | `/businesses/:id/bookings`                       | lista o reserva turnos                            |
+| `GET`         | `/businesses/:id/bookings/:bookingId`            | consulta un turno                                 |
+| `POST`        | `/businesses/:id/bookings/:bookingId/cancel`     | cancela un turno y libera el horario              |
+| `POST`        | `/businesses/:id/bookings/:bookingId/reschedule` | mueve un turno de horario, profesional o sucursal |
 
-Los errores de validación responden 400 con el campo y el motivo de cada problema.
+Los errores de validación responden 400 con el campo y el motivo de cada problema. Un horario tomado o no
+ofrecido, o un turno que ya pasó o ya está cancelado, responde 409.
 
 ## Correr el proyecto
 
