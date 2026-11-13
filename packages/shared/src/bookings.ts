@@ -75,6 +75,8 @@ export interface MyBooking extends Booking {
   serviceName: string;
   staffName: string;
   locationName: string;
+  /** Zona horaria de la sucursal, para mostrar el horario como lo ve el negocio. */
+  locationTimezone: string;
 }
 
 /** Horarios a los que se puede mover un turno, en un día local de su sucursal. */

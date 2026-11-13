@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Logo } from '../../components/Logo';
-import { useMe } from '../../lib/auth';
+import { useLogout, useMe } from '../../lib/auth';
 
 const navLink =
   'inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand dark:hover:bg-white/10';
@@ -9,6 +9,9 @@ const navLink =
 /** Marco de las páginas que ven los clientes: reservar y mis turnos. */
 export function PublicLayout({ children }: { children: ReactNode }) {
   const { data: me } = useMe();
+  const here = useLocation();
+  const navigate = useNavigate();
+  const logout = useLogout();
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-ink dark:bg-night dark:text-white">
       <header className="border-b border-slate-200 bg-white dark:border-white/10 dark:bg-white/5">
@@ -18,11 +21,21 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           </Link>
           <nav aria-label="Cuenta" className="flex items-center gap-1">
             {me ? (
-              <Link to="/mis-turnos" className={navLink}>
-                Mis turnos
-              </Link>
+              <>
+                <Link to="/mis-turnos" className={navLink}>
+                  Mis turnos
+                </Link>
+                <button
+                  type="button"
+                  className={navLink}
+                  onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/') })}
+                >
+                  Salir
+                </button>
+              </>
             ) : (
-              <Link to="/entrar" className={navLink}>
+              // Después de entrar, vuelve a esta misma página (por ejemplo, a mitad de una reserva).
+              <Link to="/entrar" state={{ from: here.pathname + here.search }} className={navLink}>
                 Entrar
               </Link>
             )}

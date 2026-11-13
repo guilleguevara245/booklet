@@ -60,6 +60,7 @@ describe.skipIf(!integrationReady)('turnos del cliente (e2e)', () => {
       serviceName: 'Barba',
       staffName: 'Leo',
       locationName: 'Boedo',
+      locationTimezone: 'America/Argentina/Buenos_Aires',
       startsAt: '2030-01-07T12:00:00.000Z',
     });
   });

@@ -242,6 +242,7 @@ export class BookingsService {
         serviceName: services.name,
         staffName: staff.name,
         locationName: locations.name,
+        locationTimezone: locations.timezone,
       })
       .from(bookings)
       .innerJoin(businesses, eq(businesses.id, bookings.businessId))
@@ -257,6 +258,7 @@ export class BookingsService {
       serviceName: r.serviceName,
       staffName: r.staffName,
       locationName: r.locationName,
+      locationTimezone: r.locationTimezone,
     }));
   }
 

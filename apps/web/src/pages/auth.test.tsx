@@ -6,25 +6,37 @@ import { ana, mockApi, renderApp } from '../test/render';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('inicio de sesión', () => {
-  it('entra y lleva al panel', async () => {
+  /** Inicia sesión desde /entrar; `memberships` define a dónde lleva después. */
+  async function login(memberships: unknown[], path = '/entrar') {
     let loggedIn = false;
     mockApi({
       'GET /auth/me': () =>
-        loggedIn
-          ? { status: 200, body: { user: ana, memberships: [] } }
-          : { status: 401, body: {} },
+        loggedIn ? { status: 200, body: { user: ana, memberships } } : { status: 401, body: {} },
       'POST /auth/login': () => {
         loggedIn = true;
         return { status: 200, body: { user: ana } };
       },
+      'GET /me/bookings': { status: 200, body: [] },
       'GET /health': { status: 503, body: {} },
     });
-    const { router } = renderApp('/entrar');
-    await userEvent.type(screen.getByLabelText('Email'), 'ana@example.com');
+    const app = renderApp(path);
+    await userEvent.type(await screen.findByLabelText('Email'), 'ana@example.com');
     await userEvent.type(screen.getByLabelText('Contraseña'), 'contraseña segura');
     await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    return app;
+  }
+
+  it('quien administra un negocio entra al panel', async () => {
+    const membership = { businessId: 'b', slug: 's', name: 'Negocio', role: 'owner' };
+    const { router } = await login([membership, { ...membership, businessId: 'c' }]);
     await waitFor(() => expect(router.state.location.pathname).toBe('/panel'));
-    expect(await screen.findByRole('heading', { name: 'Creá tu negocio' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tus negocios' })).toBeInTheDocument();
+  });
+
+  it('quien solo reserva entra a sus turnos', async () => {
+    const { router } = await login([]);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/mis-turnos'));
+    expect(await screen.findByText(/Todavía no tenés turnos/)).toBeInTheDocument();
   });
 
   it('muestra el error si la contraseña está mal', async () => {

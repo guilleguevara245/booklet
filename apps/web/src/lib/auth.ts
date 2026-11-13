@@ -1,23 +1,28 @@
-import type { AuthResponse, Login, MeResponse, Register } from '@booklet/shared';
+import type {
+  AuthResponse,
+  Booking,
+  Login,
+  MeResponse,
+  MyBooking,
+  Register,
+} from '@booklet/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from './api';
 
 export const meKey = ['me'] as const;
 
+async function fetchMe({ signal }: { signal?: AbortSignal }): Promise<MeResponse | null> {
+  try {
+    return await api<MeResponse>('GET', '/auth/me', undefined, signal);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
+
 /** La persona con sesión y sus negocios, o `null` si no inició sesión. */
 export function useMe() {
-  return useQuery({
-    queryKey: meKey,
-    queryFn: async ({ signal }) => {
-      try {
-        return await api<MeResponse>('GET', '/auth/me', undefined, signal);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) return null;
-        throw err;
-      }
-    },
-    staleTime: 60_000,
-  });
+  return useQuery({ queryKey: meKey, queryFn: fetchMe, staleTime: 60_000 });
 }
 
 /**
@@ -29,7 +34,9 @@ function useStartSession<T>(path: string) {
   const queryClient = useQueryClient();
   return useMutation<AuthResponse, ApiError, T>({
     mutationFn: (body) => api<AuthResponse>('POST', path, body),
-    onSuccess: () => queryClient.refetchQueries({ queryKey: meKey, type: 'all' }),
+    // `fetchQuery` y no `refetchQueries`: si nadie pidió `/auth/me` todavía (se entró directo
+    // a /entrar), igual queda en el caché antes de seguir.
+    onSuccess: () => queryClient.fetchQuery({ queryKey: meKey, queryFn: fetchMe, staleTime: 0 }),
   });
 }
 
@@ -42,7 +49,26 @@ export function useLogout() {
     mutationFn: () => api<void>('POST', '/auth/logout'),
     onSuccess: () => {
       queryClient.setQueryData(meKey, null);
-      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+      // Se borra todo lo de la sesión anterior (incluidos sus turnos), menos el "sin sesión".
+      queryClient.removeQueries({
+        predicate: (q) => q.queryKey !== meKey && q.queryHash !== '["me"]',
+      });
     },
+  });
+}
+
+/** Turnos de la persona con sesión, en cualquier negocio. */
+export function useMyBookings() {
+  return useQuery({
+    queryKey: ['me', 'bookings'],
+    queryFn: ({ signal }) => api<MyBooking[]>('GET', '/me/bookings', undefined, signal),
+  });
+}
+
+export function useCancelMyBooking() {
+  const queryClient = useQueryClient();
+  return useMutation<Booking, ApiError, string>({
+    mutationFn: (id) => api<Booking>('POST', `/me/bookings/${id}/cancel`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me', 'bookings'] }),
   });
 }

@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { AgendaPage } from './pages/panel/AgendaPage';
 import { PanelHome } from './pages/panel/PanelHome';
 import { BookingPage } from './pages/public/BookingPage';
+import { MyBookingsPage } from './pages/public/MyBookingsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RequireAuth } from './pages/RequireAuth';
 
@@ -12,6 +13,14 @@ export const routes: RouteObject[] = [
   { path: '/entrar', element: <LoginPage /> },
   { path: '/registro', element: <RegisterPage /> },
   { path: '/n/:slug', element: <BookingPage /> },
+  {
+    path: '/mis-turnos',
+    element: (
+      <RequireAuth>
+        <MyBookingsPage />
+      </RequireAuth>
+    ),
+  },
   {
     path: '/panel',
     element: (
