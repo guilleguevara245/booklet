@@ -2,14 +2,17 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { hashPassword } from '../auth/password.js';
 import { runMigrations } from './migrate.js';
 import * as schema from './schema.js';
 
 export const DEMO_SLUG = 'peluqueria-demo';
+/** Cuenta de la dueña del negocio de ejemplo. Solo para desarrollo local. */
+export const DEMO_OWNER = { email: 'demo@booklet.local', password: 'demo-booklet' };
 
 /**
- * Carga un negocio de ejemplo para desarrollo: una sucursal, tres servicios y dos
- * profesionales con horario partido. Si ya existe, no hace nada.
+ * Carga un negocio de ejemplo para desarrollo: una sucursal, tres servicios, dos
+ * profesionales con horario partido y una cuenta de dueña. Si ya existe, no hace nada.
  */
 export async function seed(databaseUrl: string): Promise<string> {
   await runMigrations(databaseUrl);
@@ -26,6 +29,19 @@ export async function seed(databaseUrl: string): Promise<string> {
         .insert(schema.businesses)
         .values({ slug: DEMO_SLUG, name: 'Peluquería Demo' })
         .returning();
+      const [owner] = await tx
+        .insert(schema.users)
+        .values({
+          email: DEMO_OWNER.email,
+          name: 'Dueña Demo',
+          passwordHash: await hashPassword(DEMO_OWNER.password),
+          emailVerified: true,
+        })
+        .onConflictDoUpdate({ target: schema.users.email, set: { name: 'Dueña Demo' } })
+        .returning();
+      await tx
+        .insert(schema.memberships)
+        .values({ businessId: business!.id, userId: owner!.id, role: 'owner' });
       const [location] = await tx
         .insert(schema.locations)
         .values({ businessId: business!.id, name: 'Palermo', address: 'Av. Santa Fe 3800, CABA' })
@@ -90,4 +106,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (!url) throw new Error('Falta DATABASE_URL');
   const id = await seed(url);
   console.log(`Negocio de ejemplo listo: ${DEMO_SLUG} (${id})`);
+  console.log(`Dueña: ${DEMO_OWNER.email} / ${DEMO_OWNER.password}`);
 }

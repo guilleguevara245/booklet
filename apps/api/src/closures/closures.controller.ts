@@ -19,12 +19,14 @@ import type { z } from 'zod';
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { ClosuresService } from './closures.service.js';
+import { Roles } from '../auth/request-user.js';
 
 @Controller('businesses/:businessId/closures')
 export class ClosuresController {
   constructor(@Inject(ClosuresService) private readonly closures: ClosuresService) {}
 
   @Get()
+  @Roles('owner', 'staff')
   list(
     @Param('businessId', UuidPipe) businessId: string,
     @Query(new ZodPipe(listClosuresQuerySchema)) query: z.infer<typeof listClosuresQuerySchema>,
@@ -33,6 +35,7 @@ export class ClosuresController {
   }
 
   @Post()
+  @Roles('owner')
   create(
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createClosureSchema)) body: CreateClosure,
@@ -41,6 +44,7 @@ export class ClosuresController {
   }
 
   @Delete(':id')
+  @Roles('owner')
   @HttpCode(204)
   remove(
     @Param('businessId', UuidPipe) businessId: string,

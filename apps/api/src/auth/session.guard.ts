@@ -10,7 +10,10 @@ import { Reflector } from '@nestjs/core';
 import { SESSION_COOKIE } from '@booklet/shared';
 import type { FastifyRequest } from 'fastify';
 import { ENV, type Env } from '../config/env.js';
-import { REQUIRE_USER } from './request-user.js';
+import { and, eq } from 'drizzle-orm';
+import { DB, type Database } from '../database/database.module.js';
+import { memberships } from '../database/schema.js';
+import { PUBLIC, ROLES, type MemberRole } from './request-user.js';
 import { SessionsService } from './sessions.service.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -24,10 +27,12 @@ function readToken(req: FastifyRequest): FastifyRequest['sessionToken'] {
 }
 
 /**
- * Corre antes de cada ruta: identifica a la persona por su sesión y aplica dos reglas.
+ * Corre antes de cada ruta: identifica a la persona por su sesión y aplica tres reglas.
  *
- * 1. Las rutas marcadas con `@RequireUser()` responden 401 sin sesión.
- * 2. Protección CSRF: si la sesión viene en una cookie y el pedido modifica algo, el
+ * 1. Todo exige sesión (401), salvo lo marcado con `@Public()`.
+ * 2. Las rutas con `@Roles(...)` exigen ser miembro del negocio de `:businessId` con alguno
+ *    de esos roles (403).
+ * 3. Protección CSRF: si la sesión viene en una cookie y el pedido modifica algo, el
  *    encabezado `Origin` tiene que ser uno de los orígenes permitidos. Así otra página no
  *    puede usar la cookie de alguien para actuar en su nombre. Con `Bearer` no hace falta:
  *    el navegador nunca lo agrega solo.
@@ -39,6 +44,7 @@ export class SessionGuard implements CanActivate {
   constructor(
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(DB) private readonly db: Database,
     @Inject(ENV) env: Env,
   ) {
     this.allowedOrigins = new Set(env.CORS_ORIGIN.split(',').map((o) => o.trim()));
@@ -62,11 +68,28 @@ export class SessionGuard implements CanActivate {
       }
     }
 
-    const required = this.reflector.getAllAndOverride<boolean>(REQUIRE_USER, [
-      ctx.getHandler(),
-      ctx.getClass(),
-    ]);
-    if (required && !req.user) throw new UnauthorizedException('Iniciá sesión para continuar');
+    const targets = [ctx.getHandler(), ctx.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(PUBLIC, targets)) return true;
+    if (!req.user) throw new UnauthorizedException('Iniciá sesión para continuar');
+
+    const roles = this.reflector.getAllAndOverride<MemberRole[] | undefined>(ROLES, targets);
+    if (roles) {
+      const businessId = (req.params as Record<string, string | undefined>).businessId;
+      const role = businessId ? await this.roleIn(businessId, req.user.id) : undefined;
+      if (!role || !roles.includes(role)) {
+        throw new ForbiddenException('No tenés permiso para hacer esto en este negocio');
+      }
+    }
     return true;
+  }
+
+  private async roleIn(businessId: string, userId: string): Promise<MemberRole | undefined> {
+    // Un id mal formado no puede ser miembro; el pipe de la ruta igual responde 400 después.
+    if (!/^[0-9a-f-]{36}$/i.test(businessId)) return undefined;
+    const row = await this.db.query.memberships.findFirst({
+      where: and(eq(memberships.businessId, businessId), eq(memberships.userId, userId)),
+      columns: { role: true },
+    });
+    return row?.role;
   }
 }

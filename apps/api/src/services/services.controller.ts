@@ -9,17 +9,20 @@ import {
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { ServicesService } from './services.service.js';
+import { Public, Roles } from '../auth/request-user.js';
 
 @Controller('businesses/:businessId/services')
 export class ServicesController {
   constructor(@Inject(ServicesService) private readonly catalog: ServicesService) {}
 
   @Get()
+  @Public()
   list(@Param('businessId', UuidPipe) businessId: string): Promise<Service[]> {
     return this.catalog.list(businessId);
   }
 
   @Post()
+  @Roles('owner')
   create(
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createServiceSchema)) body: CreateService,
@@ -28,6 +31,7 @@ export class ServicesController {
   }
 
   @Patch(':id')
+  @Roles('owner')
   update(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,

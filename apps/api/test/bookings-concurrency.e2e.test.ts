@@ -1,6 +1,6 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { client, integrationReady, startApp, uniqueSlug } from './helpers.js';
+import { client, integrationReady, signUp, startApp, uniqueSlug, withSession } from './helpers.js';
 
 const ATTEMPTS = 20;
 
@@ -14,6 +14,9 @@ describe.skipIf(!integrationReady)('reservas simultáneas (e2e)', () => {
   beforeAll(async () => {
     app = await startApp();
     api = client(app);
+    // Una dueña para todo el archivo: es dueña de cada negocio que crea.
+    const owner = await signUp(api, 'Dueña');
+    api = withSession(api, owner.as);
   });
 
   afterAll(async () => {

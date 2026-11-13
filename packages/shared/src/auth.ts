@@ -53,3 +53,18 @@ export const googleLoginSchema = z.object({
   idToken: z.string().min(20).max(4096),
 });
 export type GoogleLogin = z.infer<typeof googleLoginSchema>;
+
+export type MemberRole = 'owner' | 'staff';
+
+/** Un negocio que la persona administra, con su rol. */
+export interface Membership {
+  businessId: string;
+  slug: string;
+  name: string;
+  role: MemberRole;
+}
+
+export interface MeResponse {
+  user: User;
+  memberships: Membership[];
+}

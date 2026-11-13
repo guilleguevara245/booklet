@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { client, integrationReady, startApp, uniqueSlug } from './helpers.js';
+import { client, integrationReady, signUp, startApp, uniqueSlug, withSession } from './helpers.js';
 
 // 2030-01-07 es lunes. Buenos Aires es UTC-3: 09:00 local = 12:00Z.
 const NINE = '2030-01-07T09:00:00-03:00';
@@ -14,6 +14,9 @@ describe.skipIf(!integrationReady)('reservas (e2e)', () => {
   beforeAll(async () => {
     app = await startApp();
     api = client(app);
+    // Una dueña para todo el archivo: es dueña de cada negocio que crea.
+    const owner = await signUp(api, 'Dueña');
+    api = withSession(api, owner.as);
   });
 
   afterAll(async () => {

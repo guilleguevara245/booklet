@@ -75,6 +75,14 @@ export async function signUp(api: ReturnType<typeof client>, name = 'Ana') {
   return { user: res.body.user, email, as: sessionHeaders(res.headers) };
 }
 
+/** Devuelve un cliente que manda siempre los encabezados de esa sesión. */
+export function withSession(
+  api: ReturnType<typeof client>,
+  as: Record<string, string>,
+): ReturnType<typeof client> {
+  return (method, url, payload, extra) => api(method, url, payload, { ...as, ...extra });
+}
+
 /** Encabezados de una sesión a partir de la cookie que devolvió la API. */
 export function sessionHeaders(headers: Record<string, unknown>): Record<string, string> {
   const raw = headers['set-cookie'];

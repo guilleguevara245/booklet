@@ -13,12 +13,14 @@ import {
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { BookingsService } from './bookings.service.js';
+import { Public, Roles } from '../auth/request-user.js';
 
 @Controller('businesses/:businessId/bookings')
 export class BookingsController {
   constructor(@Inject(BookingsService) private readonly bookings: BookingsService) {}
 
   @Post()
+  @Public()
   create(
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createBookingSchema)) body: CreateBooking,
@@ -27,6 +29,7 @@ export class BookingsController {
   }
 
   @Get()
+  @Roles('owner', 'staff')
   list(
     @Param('businessId', UuidPipe) businessId: string,
     @Query(new ZodPipe(listBookingsQuerySchema)) query: ListBookingsQuery,
@@ -35,6 +38,7 @@ export class BookingsController {
   }
 
   @Get(':id')
+  @Roles('owner', 'staff')
   get(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,
@@ -43,6 +47,7 @@ export class BookingsController {
   }
 
   @Post(':id/cancel')
+  @Roles('owner', 'staff')
   @HttpCode(200)
   cancel(
     @Param('businessId', UuidPipe) businessId: string,
@@ -53,6 +58,7 @@ export class BookingsController {
   }
 
   @Post(':id/reschedule')
+  @Roles('owner', 'staff')
   @HttpCode(200)
   reschedule(
     @Param('businessId', UuidPipe) businessId: string,

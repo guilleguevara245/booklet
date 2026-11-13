@@ -11,10 +11,22 @@ declare module 'fastify' {
   }
 }
 
-export const REQUIRE_USER = 'booklet:requireUser';
+export type MemberRole = 'owner' | 'staff';
 
-/** La ruta necesita una sesión iniciada; si no hay, responde 401. */
-export const RequireUser = () => SetMetadata(REQUIRE_USER, true);
+export const PUBLIC = 'booklet:public';
+export const ROLES = 'booklet:roles';
+
+/**
+ * La ruta se puede usar sin sesión: catálogo, disponibilidad y reservas de la página pública.
+ * Todo lo que no lleva `@Public()` exige una sesión iniciada.
+ */
+export const Public = () => SetMetadata(PUBLIC, true);
+
+/**
+ * La ruta exige ser miembro del negocio de `:businessId` con alguno de estos roles.
+ * Sin el rol, responde 403.
+ */
+export const Roles = (...roles: MemberRole[]) => SetMetadata(ROLES, roles);
 
 /** Inyecta en el handler la persona con sesión. */
 export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionContext) => {

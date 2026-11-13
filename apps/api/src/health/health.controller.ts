@@ -1,6 +1,7 @@
 import { Controller, Get, HttpException, HttpStatus, Inject } from '@nestjs/common';
 import type { HealthResponse } from '@booklet/shared';
 import { HealthService } from './health.service.js';
+import { Public } from '../auth/request-user.js';
 
 @Controller('health')
 export class HealthController {
@@ -8,6 +9,7 @@ export class HealthController {
 
   /** 200 si todo responde; 503 con el mismo detalle si alguna dependencia está caída. */
   @Get()
+  @Public()
   async get(): Promise<HealthResponse> {
     const result = await this.health.check();
     if (result.status !== 'ok') {

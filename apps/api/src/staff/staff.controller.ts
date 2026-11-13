@@ -14,17 +14,20 @@ import {
 import { UuidPipe } from '../common/uuid.pipe.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { StaffService } from './staff.service.js';
+import { Public, Roles } from '../auth/request-user.js';
 
 @Controller('businesses/:businessId/staff')
 export class StaffController {
   constructor(@Inject(StaffService) private readonly staff: StaffService) {}
 
   @Get()
+  @Public()
   list(@Param('businessId', UuidPipe) businessId: string): Promise<Staff[]> {
     return this.staff.list(businessId);
   }
 
   @Post()
+  @Roles('owner')
   create(
     @Param('businessId', UuidPipe) businessId: string,
     @Body(new ZodPipe(createStaffSchema)) body: CreateStaff,
@@ -33,6 +36,7 @@ export class StaffController {
   }
 
   @Get(':id')
+  @Roles('owner', 'staff')
   get(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,
@@ -41,6 +45,7 @@ export class StaffController {
   }
 
   @Patch(':id')
+  @Roles('owner')
   update(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,
@@ -50,6 +55,7 @@ export class StaffController {
   }
 
   @Put(':id/services')
+  @Roles('owner')
   setServices(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,
@@ -59,6 +65,7 @@ export class StaffController {
   }
 
   @Get(':id/schedule')
+  @Roles('owner', 'staff')
   getSchedule(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,
@@ -67,6 +74,7 @@ export class StaffController {
   }
 
   @Put(':id/schedule')
+  @Roles('owner')
   setSchedule(
     @Param('businessId', UuidPipe) businessId: string,
     @Param('id', UuidPipe) id: string,

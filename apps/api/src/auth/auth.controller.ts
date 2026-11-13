@@ -8,24 +8,28 @@ import {
   type AuthResponse,
   type GoogleLogin,
   type Login,
+  type MeResponse,
   type Register,
   type User,
 } from '@booklet/shared';
+import { BusinessesService } from '../businesses/businesses.service.js';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ENV, type Env } from '../config/env.js';
 import { ZodPipe } from '../common/zod.pipe.js';
 import { AuthService, toUser } from './auth.service.js';
-import { CurrentUser, RequireUser } from './request-user.js';
+import { CurrentUser, Public } from './request-user.js';
 import { SESSION_DAYS, type SessionUser } from './sessions.service.js';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(BusinessesService) private readonly businesses: BusinessesService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
   @Post('register')
+  @Public()
   async register(
     @Body(new ZodPipe(registerSchema)) body: Register,
     @Req() req: FastifyRequest,
@@ -36,6 +40,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Public()
   @HttpCode(200)
   async login(
     @Body(new ZodPipe(loginSchema)) body: Login,
@@ -48,6 +53,7 @@ export class AuthController {
 
   /** Recibe el ID token de Google Identity Services (el `credential` del botón de Google). */
   @Post('google')
+  @Public()
   @HttpCode(200)
   async google(
     @Body(new ZodPipe(googleLoginSchema)) body: GoogleLogin,
@@ -59,6 +65,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @Public()
   @HttpCode(204)
   async logout(
     @Req() req: FastifyRequest,
@@ -69,9 +76,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @RequireUser()
-  me(@CurrentUser() user: SessionUser): { user: User } {
-    return { user: toUser(user) };
+  async me(@CurrentUser() user: SessionUser): Promise<MeResponse> {
+    return { user: toUser(user), memberships: await this.businesses.membershipsOf(user.id) };
   }
 
   /**
